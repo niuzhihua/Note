@@ -1,0 +1,174 @@
+1、协程是什么？
+
+协程(函数)是可以 挂起和恢复的程序。所谓程序在语言中的体现就是函数。 挂起和恢复是协程的本质。
+挂起和恢复可以控制代码的执行流程，有了挂起和恢复，就可以执行多任务。
+协程是一个与语言无关的概念。
+使用协程可以做到：异步逻辑，同步代码。
+挂起不是阻塞，而是等着被调用。是非阻塞式的挂起。
+
+挂起和恢复 :
+挂起函数被调用时，协程函数(协程主调用流程)就被 挂起了
+挂起函数返回时(执行完后)，协程函数就恢复执行了。
+
+
+
+
+2、协程的分类？
+按照调用栈分类：
+    有栈协程 ：每个协程会分配单独的调用栈，类似线程的调用栈。
+    无栈协程 ：不分配单独的调用栈，挂起的状态通过对象或闭包保存。
+
+    挂起是需要记录状态的，这样恢复的时候才可以执行。
+    kotlin 中的continueation 就是用来保存挂起点的，所以kotlin协程 是无栈协程。
+
+    如何区分有栈和无栈协程？
+        通过挂起点的状态如何保存,有栈协程 挂起点状态在栈中，无栈协程的挂起点状态是对象或闭包。
+        可以在任意函数嵌套中 挂起， --> 有栈协程(成本高)
+        只能在当前函数中挂起  --> 无栈协程
+
+
+    kotlin协程是无栈协程。通过Continuation来保存挂起点的状态。
+
+
+按照调用关系分类:
+    对称协程：调度权可以转移给任意协程，协程之间是对等关系。
+                 A协程 调用B协程， B协程挂起后 只能恢复到 其他协程。
+    非对称协程：调度权只能转移给调用自己的协程，协程间存在父子关系。
+                A协程 调用B协程， B协程挂起后 只能恢复到 A协程。
+
+    kotlin协程是非对称协程。
+
+
+-----------------------------------------------------------------------------------
+  Lua Coroutine (lua中的协程) :
+
+  创建协程：coroutine.create(<function>)
+  查询协程状态: coroutine.status(<coroutine-object>)
+  挂起协程：   coroutine.yield(<values-to-yield>)
+  恢复协程：coroutine.resume(<coroutine-object>)
+
+-----------------------------------------------------------------------------------
+3、Kotlin协程的基本要素：
+        1、
+        挂起函数(suspend fun)： suspend 关键字修饰的函数。 只能在 协程 或 其他挂起函数 中调用
+        挂起点：挂起函数的调用处 就是一个挂起点， 一个协程函数中有n个挂起点。
+
+        挂起标记: 挂起函数的返回值就是 挂起标记。
+        判断挂起函数是否需要挂起 ：   挂起标记 == CoroutineSingletons.COROUTINE_SUSPENDED
+        如何挂起： 在case 分支中 return .  (待详细解释)
+        如何恢复： 调用Continuation.resumeWith()  函数。
+
+            协程内的代码都是通过Continuation.resumeWith 函数调用的。
+            每次调用 计数+1，每个挂起点对应一个 case 分支。
+            挂起函数 在返回 COROUTINE_SUSPENDED 值的时候 才会挂起。
+        ---------------------------------------------------------------------------------------------
+                创建协程：fun <T> (suspend () -> T).createCoroutine    // 定义在Continuation.kt 文件中
+                启动协程: fun <T> (suspend () -> T).startCoroutine     // 定义在Continuation.kt 文件中
+
+                /**
+                 * 传入一个Continuation对象，并返回一个Continuation对象。
+                 * 意味着一个协程创建后有两个 Continuation。
+                 *
+                 * completion : 传入的Continuation对象,
+                 * return : 返回Continuation对象
+                 */
+                fun <T> (suspend () -> T).createCoroutine(completion: Continuation<T>):Continuation<Unit>
+
+        2、
+        Continuation(接口)：用来保存挂起点的状态。
+              恢复协程：
+                      interface Continuation<in T>{
+                         fun resumeWith(result: Result<T>)
+                      }
+
+
+
+              SuspendLambda(挂起函数)           : Continuation
+              AbstractCoroutine(协程函数父类)   : Continuation
+              StandaloneCoroutine(协程函数)     : AbstractCoroutine : Continuation
+
+
+
+
+        3、
+        协程上下文:(CoroutineContext)：上下文其实就是数据的载体，包装数据的。 所有的协程执行的时候都需要一个CoroutineContext.
+                     协程执行过程中需要携带数据, 例如协程的名字，异常处理器等等。
+                     CoroutineContext.Key
+                     CoroutineContext.Element
+        4、
+        拦截器：负责拦截所有的挂起函数，用来线程切换。
+                ContinuationInterceptor : CoroutineContext.Element
+
+
+        GlobalScope.launch{     // 协程(函数)
+
+            var str = "abc"   // 当前线程中执行
+            var result = foo();  // 挂起点 ：指定线程中执行
+            println(result)      // 指定线程中执行
+
+        }
+        suspend fun foo():String{ // 挂起函数
+
+            return "abc"
+        }
+
+3.1、 协程执行流程 :
+
+            协程内的代码都是通过Continuation.resumeWith 函数调用的。
+            每次调用 计数+1，每个挂起点对应一个 case 分支。
+            挂起函数 在返回 COROUTINE_SUSPENDED 值的时候 才会挂起。
+
+
+        suspend fun a{
+            // 挂起函数 被 SuspendLambda 类来描述， SuspendLambda extends Coroutine 。
+            // SuspendLambda 就是 Coroutine的实现类。
+        }.startCoroutine(..)
+
+
+        SuspendLambda对象. startCoroutine(..)
+
+
+3.2、线程调度
+
+        由于 协程内的代码都是通过Continuation.resumeWith 函数调用的，因此 只要拦截 resumeWith 方法就可以实现线程的切换。
+        本质上也就是拦截了 挂起函数 SuspendLambda 的执行。
+
+3.3、协程状态
+
+        未完成
+        已完成
+
+4、理解挂起函数
+
+        挂起函数类型：
+                    suspend fun foo(){}    类型为 suspend()->Unit
+                    suspend fun bar(a:Int):Int{  类型为 suspend(Int)->Int
+                        return 0
+                    }
+        挂起函数被编译后类型：
+
+                    fun foo(continuation:Continuation<Unit>):Any{
+                        // 如果没有切线程，就是没有真正的挂起.
+                    }
+
+                    fun bar(a:Int,continuation:Continuation<Int>):Any{
+                        // 如果没有切线程，就是没有真正的挂起.
+                        return 0
+                    }
+
+                    1、编译后类型
+                    挂起函数被调用时需要传递 Continuation 对象，这是由编译器完成的。由此可以理解到，
+                    挂起函数只能在协程或者挂起函数中被调用，因为需要传递一个Continuation对象。
+                    而只有协程或挂起函数中才有Continuation对象。
+
+                    2、返回值Any的含义
+
+                        当挂起函数没有被挂起时，Any 表示函数的返回值
+                        当挂起函数 被 挂起时，Any 的值是一个挂起状态。
+
+
+
+
+
+
+
