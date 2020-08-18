@@ -28,6 +28,11 @@ interface GithubApi {
     @Api("users")
     interface Users {
 
+        @GET("https://api.github.com/users/{myName}")
+        fun getUserName5(@Query("age") age: Int, @Path("myName") name: String)
+
+        @GET("https://api.github.com/users/{myName}")
+        fun getUserName5_(@Path("myName") name: String, @Query("age") age: Int)
 
         @GET("https://api.github.com/users/niuzhihua")
         fun getUserName4(@Query("username") name: String, @Query("age") age: Int, desc: String)
@@ -47,3 +52,5 @@ interface GithubApi {
 
     }
 }
+
+

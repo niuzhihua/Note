@@ -13,6 +13,8 @@ fun main() {
 
     api.getUserName4("tom", 18, "desc")
 
+    api.getUserName5(18, "niuzhihua")
+    api.getUserName5_("niuzhihua", 19)
 
 //    val a = object :A{}
 //    val aa = AA()
@@ -23,18 +25,14 @@ fun main() {
 //    println(b.javaClass.enclosingClass)
 //    println(c.javaClass.enclosingClass)
 
-
 }
 
 class AA {
-
 }
 
 interface A {
     class B {
-
         class C {
-
         }
     }
 }
