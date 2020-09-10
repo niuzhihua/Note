@@ -4,14 +4,56 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     tools:context=".kotlin.myContinueation.sample.AndroidSample.CoroutineActivity">
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="5dp"
+        android:gravity="center"
+        android:text="协程应用场景" />
 
     <Button
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:onClick="showDialog"
-        android:text="show dialog(回调转协程)"
+        android:text="1、回调转协程：show dialog"
         android:textAllCaps="false" />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:onClick="getTaskResult"
+        android:text="2、使用MainScope()获取任务的值：getTaskResult"
+        android:textAllCaps="false" />
+
+
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="确保协程及时被取消。" />
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:onClick="autoCancel"
+        android:text="3、随着页面关闭自动取消协程(包括取消协程内的任务)"
+        android:textAllCaps="false" />
+
+    <TextView
+        android:id="@+id/btnClickAutoDispose"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="4、利用OnAttachStateChangeListener取消协程(GlobalScope.launch)"
+        android:textAllCaps="false" />
+
+
+
+
+
+
 
 </LinearLayout>

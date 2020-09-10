@@ -17,6 +17,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".kotlin.myContinueation.sample.AndroidSample.CoroutineActivity" />
+        <activity android:name=".kotlin.myContinueation.sample.AndroidSample.CancelCoroutineActivity" />
     </application>
 
 </manifest>
