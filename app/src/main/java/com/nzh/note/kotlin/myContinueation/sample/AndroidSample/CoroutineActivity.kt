@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import com.nzh.note.R
 import kotlinx.coroutines.*
@@ -22,7 +23,7 @@ class CoroutineActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_coroutine)
 
-        val autoDisposeButton = findViewById<Button>(R.id.btnClickAutoDispose)
+        val autoDispose = findViewById<TextView>(R.id.btnClickAutoDispose)
 
 //        autoDisposeButton.setOnClickListenerAutoDispose {
 
@@ -32,7 +33,7 @@ class CoroutineActivity : AppCompatActivity() {
 //        }
         val tempView = Button(this)
         tempView.text = "temp btn"
-        val parent = autoDisposeButton.parent as LinearLayout
+        val parent = autoDispose.parent as LinearLayout
         // 添加 view
         parent.addView(tempView, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         tempView.setOnClickListener {
