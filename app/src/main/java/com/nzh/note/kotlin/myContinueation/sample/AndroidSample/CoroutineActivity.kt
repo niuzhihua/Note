@@ -25,12 +25,6 @@ class CoroutineActivity : AppCompatActivity() {
 
         val autoDispose = findViewById<TextView>(R.id.btnClickAutoDispose)
 
-//        autoDisposeButton.setOnClickListenerAutoDispose {
-
-        // https://github.com/enbandari/kotlin-coroutines-android/blob/master/app/src/main/java/com/bennyhuo/kotlin/coroutines/android/sample/MainActivity.kt
-
-
-//        }
         val tempView = Button(this)
         tempView.text = "temp btn"
         val parent = autoDispose.parent as LinearLayout
