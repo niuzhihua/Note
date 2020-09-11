@@ -27,9 +27,15 @@ class CoroutineActivity : AppCompatActivity() {
 
         val tempView = Button(this)
         tempView.text = "temp btn"
+        val tempView2 = Button(this)
+        tempView2.text = "temp btn2"
+
         val parent = autoDispose.parent as LinearLayout
         // 添加 view
         parent.addView(tempView, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        parent.addView(tempView2, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+
+        // 使用方式：自动取消协程
         tempView.setOnClickListener {
 
             GlobalScope.launch(Dispatchers.Main) {
@@ -41,8 +47,20 @@ class CoroutineActivity : AppCompatActivity() {
 
             }.asAutoDisposeJob2(it)
         }
+        // 自动取消协程
+        tempView2.setOnClickListenerAutoDispose {
+            haha(parent, tempView2)
+        }
 
 
+    }
+
+    suspend fun haha(parent: LinearLayout, tempView: View) {
+        Log.d("-->", "request")
+        // 移除view , 同时取消了协程。
+        parent.removeView(tempView)
+        delay(2500)
+        Log.d("-->", "response")
     }
 
     fun showDialog(view: View) {
@@ -115,14 +133,12 @@ class CoroutineActivity : AppCompatActivity() {
                 "{abc}"
             }.await()
 
-            cancel()
-            Toast.makeText(this@CoroutineActivity,"isActive:${mainScope.isActive}",Toast.LENGTH_SHORT).show()
         }
 
 
     }
 
-    fun autoCancel(view: View) {
+    fun autoCancel(v: View) {
         startActivity(Intent(this, CancelCoroutineActivity::class.java))
     }
 
