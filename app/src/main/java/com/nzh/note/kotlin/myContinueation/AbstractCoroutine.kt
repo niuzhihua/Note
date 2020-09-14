@@ -1,6 +1,9 @@
 package com.nzh.note.kotlin.myContinueation
 
 import com.nzh.note.kotlin.myContinueation.context.MyJob
+import kotlinx.coroutines.CoroutineName
+import java.lang.IllegalArgumentException
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.*
 
@@ -30,10 +33,10 @@ abstract class AbstractCoroutine<T>
         // getAndSet : Atomically sets to the given value and returns the old value.
         // 返回的是 旧的值 , 并更新为 新值：Completed
 
-        val currentState = state.getAndSet(CoroutineState.Completed(result.getOrNull()))
+        val oldState = state.getAndSet(CoroutineState.Completed(result.getOrNull(),result.exceptionOrNull()))
 
 
-        when (currentState) {
+        when (oldState) {
             // join 的时候 可能会设置 为 这个状态。
             is CoroutineState.CompletedHandler<*> -> {
                 println("--CompletedHandler---")
@@ -42,17 +45,35 @@ abstract class AbstractCoroutine<T>
                 // 注意 函数类型 的值(函数体) 是： {continuation.resume...} ,因此执行这行代码后还会 执行 resumeWith 函数。
                 // 虽然返回Unit, 但是其函数体是 {continuation.resumexxx}
                 // 所以当其执行后，会调用到 resumeWith 函数。在resumeWith函数中 将返回值 传给state
-                (currentState as CoroutineState.CompletedHandler<T>).onMyResumeParam(result)
+                (oldState as CoroutineState.CompletedHandler<T>).onMyResumeParam(result)
             }
             is CoroutineState.Completed<*> -> {
                 // do Nothing
-
             }
 
         }
 
+       (state.get() as CoroutineState.Completed<*>).exception?.let {
+
+            when (it) {
+                // 协程取消发送的异常，不用处理。
+                is CancellationException -> {
+                    //do nothing
+                }
+                else -> {
+                    println("---e---")
+                    // 交给 子类处理
+                    myHanldeException(it)
+                }
+            }
+
+        }
 
     }
+
+
+    protected open fun myHanldeException(throwable: Throwable) {}
+
 
     /**
      * 等待协程结束 :
@@ -99,7 +120,7 @@ abstract class AbstractCoroutine<T>
         doOnCompleted { result ->
             println("--join--resume")
             // 恢复 实现。
-            continuation.resume(Unit)
+            continuation.resumeWith(Result.success(Unit))
         }
 
     }
@@ -133,7 +154,7 @@ abstract class AbstractCoroutine<T>
                         onMyResumeParam(result)
                     }
                 }
-                else -> throw java.lang.IllegalArgumentException("invalid state ${currentState}")
+                else -> throw IllegalArgumentException("invalid state ${currentState}")
 
             }
         }
@@ -145,5 +166,10 @@ abstract class AbstractCoroutine<T>
     override fun cancel() {
     }
 
+
+    // 返回协程的名字
+    override fun toString(): String {
+        return "${context[CoroutineName]?.name}"
+    }
 }
 

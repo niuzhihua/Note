@@ -20,7 +20,7 @@ suspend fun myDelay(time: Long, unit: TimeUnit = TimeUnit.MILLISECONDS) =
                pool.schedule(
                             {
                                 println("-...${time}s-")
-                                it.resume(Unit)
+                                it.resumeWith(Result.success(Unit))
                             },    // runnable 可用 lambda 表达式 代替。
                             time,
                             unit

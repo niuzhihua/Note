@@ -4,12 +4,28 @@ import com.nzh.note.kotlin.myContinueation.async_await.DefferredCoroutine
 import com.nzh.note.kotlin.myContinueation.async_await.DefferredJob
 import com.nzh.note.kotlin.myContinueation.context.MyJob
 import com.nzh.note.kotlin.myContinueation.dispatcher.DispatcherImpl
+import com.nzh.note.kotlin.myContinueation.exception.MyCoroutineExceptionHandler
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 
 
-class StandaloneCoroutine(context: CoroutineContext) : AbstractCoroutine<Unit>(context)
+class StandaloneCoroutine(context: CoroutineContext) : AbstractCoroutine<Unit>(context) {
+
+    // 重写异常处理函数
+    override fun myHanldeException(throwable: Throwable) {
+
+        // 如果有自己的异常处理器，则调用处理器的函数 处理异常。
+        val result = context[MyCoroutineExceptionHandler]?.myHandleException(context, throwable)
+
+        // 否则 用当前线程的 常处理器 来 处理异常。
+        result ?: Thread.currentThread().let {
+            println("--没有自己的异常处理器--")
+            it.uncaughtExceptionHandler.uncaughtException(it, throwable)
+            throwable.printStackTrace()
+        }
+    }
+}
 
 
 /**
