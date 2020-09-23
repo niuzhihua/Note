@@ -1,27 +1,46 @@
 package com.nzh.note.kotlin.myContinueation
 
+import com.nzh.note.kotlin.myContinueation.cancel.CancelState
+import com.nzh.note.kotlin.myContinueation.cancel.suspendCancellableCoroutine
 import com.nzh.note.kotlin.myContinueation.context.MyJob
+import com.nzh.note.kotlin.myContinueation.context.OnCancel
+import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.cancel
 import java.lang.IllegalArgumentException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.*
 
 abstract class AbstractCoroutine<T>
-(override val context: CoroutineContext) : MyJob, Continuation<T> {
+(context: CoroutineContext) : MyJob, Continuation<T> {
 
     // 协程状态
     protected val state = AtomicReference<CoroutineState>()
+
+    override val context: CoroutineContext = context + this
+
+
+    val parentJob = context[MyJob]
+
 
     // 初始化协程状态
     init {
         // 设置为未完成状态
         state.set(CoroutineState.InComplete)
+
+        // 如果满足取消条件，则取消协程。
+        parentJob?.invokeOnCancel {
+            cancel()
+            println(" fun cancel is invoked ...")
+        }
     }
 
+    override val isActive: Boolean
+        get() = state.get() is CoroutineState.InComplete
 
     // 当前 Continuation 所在的协程的 状态 ，是否为 完成状态。
-    val isCompleted: Boolean =
+    override val isCompleted: Boolean =
             state.get() is CoroutineState.Completed<*>
 
     /**
@@ -32,9 +51,7 @@ abstract class AbstractCoroutine<T>
 
         // getAndSet : Atomically sets to the given value and returns the old value.
         // 返回的是 旧的值 , 并更新为 新值：Completed
-
-        val oldState = state.getAndSet(CoroutineState.Completed(result.getOrNull(),result.exceptionOrNull()))
-
+        val oldState = state.getAndSet(CoroutineState.Completed(result.getOrNull(), result.exceptionOrNull()))
 
         when (oldState) {
             // join 的时候 可能会设置 为 这个状态。
@@ -47,13 +64,18 @@ abstract class AbstractCoroutine<T>
                 // 所以当其执行后，会调用到 resumeWith 函数。在resumeWith函数中 将返回值 传给state
                 (oldState as CoroutineState.CompletedHandler<T>).onMyResumeParam(result)
             }
+
             is CoroutineState.Completed<*> -> {
+                // do Nothing
+            }
+            is CoroutineState.CancellingState -> {
                 // do Nothing
             }
 
         }
 
-       (state.get() as CoroutineState.Completed<*>).exception?.let {
+        // 协程的异常处理
+        (state.get() as CoroutineState.Completed<*>).exception?.let {
 
             when (it) {
                 // 协程取消发送的异常，不用处理。
@@ -66,13 +88,19 @@ abstract class AbstractCoroutine<T>
                     myHanldeException(it)
                 }
             }
-
         }
+
 
     }
 
-
+    /**
+     * 用来处理自己的异常
+     */
     protected open fun myHanldeException(throwable: Throwable) {}
+
+    /**
+     * 用来处理子协程的异常
+     */
 
 
     /**
@@ -94,11 +122,17 @@ abstract class AbstractCoroutine<T>
     override suspend fun join() {
         println("join:${state.get()}")
         when (state.get()) {
-            is CoroutineState.Completed<*> -> return
+            is CoroutineState.Completed<*> -> {
 
-            is CoroutineState.InComplete -> {
-                println("--join--InComplete")
-                // 挂起实现
+                val currentCallingJobState = coroutineContext[MyJob]?.isActive ?: return
+                if (!currentCallingJobState) {
+                    throw CancellationException("Coroutine is cancelled.")
+                }
+                return
+            }
+
+            is CoroutineState.InComplete,
+            CoroutineState.CancellingState -> {
                 return joinSuspend()
             }
 
@@ -115,12 +149,15 @@ abstract class AbstractCoroutine<T>
      *      如果是已完成状态，不用更新。
      *
      */
-    private suspend fun joinSuspend() = suspendCoroutine<Unit> { continuation ->
-        println("---suspendCoroutine---")
+    private suspend fun joinSuspend() = suspendCancellableCoroutine<Unit> { cancelContinuation ->
         doOnCompleted { result ->
-            println("--join--resume")
-            // 恢复 实现。
-            continuation.resumeWith(Result.success(Unit))
+            println("-----------x---")
+            cancelContinuation.resume(Unit)
+        }
+
+        // 取消 挂起函数 join
+        cancelContinuation.addCancelBlock {
+            // do nothing
         }
 
     }
@@ -154,16 +191,46 @@ abstract class AbstractCoroutine<T>
                         onMyResumeParam(result)
                     }
                 }
+                is CoroutineState.CancellingState -> {
+                    myCancel()
+                }
                 else -> throw IllegalArgumentException("invalid state ${currentState}")
 
             }
         }
+    }
 
+
+    /**
+     * 若满足取消条件，则执行 block
+     */
+    override fun invokeOnCancel(block: OnCancel) {
+
+        (state.get() as? CoroutineState.CancellingState)?.let {
+            println(" onCancel block has bean setted...")
+            block()
+        }
 
     }
 
-    // 取消协程
-    override fun cancel() {
+    /**
+     *  取消协程
+     */
+    override fun myCancel() {
+
+        //1、 执行状态流转：
+        //    未完成状态 --> 取消状态。
+        //    完成状态 --> do Nothing
+        //    取消状态 --> do Nothing
+
+        state.compareAndSet(CoroutineState.InComplete, CoroutineState.CancellingState)
+
+        // 2、执行取消操作
+        if (state.get() is CoroutineState.CancellingState) {
+            cancel()
+            println(" coroutine has bean caneled")
+        }
+
     }
 
 

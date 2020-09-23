@@ -1,5 +1,6 @@
 package com.nzh.note.kotlin.myContinueation
 
+import com.nzh.note.kotlin.myContinueation.cancel.suspendCancellableCoroutine
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -10,21 +11,40 @@ val pool = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProces
 }
 
 
-
 // 1、调用挂起函数 时必然 有一个 continuation 实例。
 // 通过 suspendCoroutine 函数来获取 挂起函数的 continuation 实例。
 //  2、定义 myDelay 函数，返回值 Unit, 函数体作为参数传给suspendCoroutine
 suspend fun myDelay(time: Long, unit: TimeUnit = TimeUnit.MILLISECONDS) =
         suspendCoroutine<Unit> {
 
-               pool.schedule(
-                            {
-                                println("-...${time}s-")
-                                it.resumeWith(Result.success(Unit))
-                            },    // runnable 可用 lambda 表达式 代替。
-                            time,
-                            unit
-                    )
+            pool.schedule(
+                    {
+                        println("-...${time}s-")
+                        it.resumeWith(Result.success(Unit))
+                    },    // runnable 可用 lambda 表达式 代替。
+                    time,
+                    unit
+            )
+        }
+
+suspend fun myDelayWithCancel(time: Long, unit: TimeUnit = TimeUnit.MILLISECONDS) =
+        suspendCancellableCoroutine<Unit> { cancelContinuation ->
+
+            val future = pool.schedule(
+                    {
+                        println("->...${time}s....")
+                        cancelContinuation.resume(Unit)
+                    },    // runnable 可用 lambda 表达式 代替。
+                    time,
+                    unit
+            )
+
+            // 取消 挂起函数 delay
+            cancelContinuation.addCancelBlock {
+                future.cancel(true)
+                println("suspend fun delay has been canceled...")
+            }
+
         }
 
 

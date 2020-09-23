@@ -2,9 +2,11 @@ package com.nzh.note.kotlin.myContinueation.context
 
 import kotlin.coroutines.CoroutineContext
 
+typealias OnCancel = () -> Unit
+
 interface MyJob : CoroutineContext.Element {
 
-    companion object Key2 : CoroutineContext.Key<MyJob>
+    companion object  : CoroutineContext.Key<MyJob>
 
     override val key: CoroutineContext.Key<*>
         get() = MyJob
@@ -18,8 +20,18 @@ interface MyJob : CoroutineContext.Element {
      */
     suspend fun join()
 
+    val isActive: Boolean
+
+    val isCompleted: Boolean
+
     /**
      * 取消协程
      */
-    fun cancel()
+    fun myCancel()
+
+    /**
+     * 如果满足取消条件，则 执行 block
+     */
+    fun invokeOnCancel(block: OnCancel)
+
 }

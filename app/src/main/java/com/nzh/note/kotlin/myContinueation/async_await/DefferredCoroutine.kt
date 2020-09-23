@@ -3,11 +3,11 @@ package com.nzh.note.kotlin.myContinueation.async_await
 import com.nzh.note.kotlin.myContinueation.AbstractCoroutine
 import com.nzh.note.kotlin.myContinueation.CoroutineState
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 
 class DefferredCoroutine<T>(context: CoroutineContext) : AbstractCoroutine<T>(context), DefferredJob<T> {
+
 
     override suspend fun await(): T {
         // 如果是未完成状态 ：则挂起
@@ -16,7 +16,8 @@ class DefferredCoroutine<T>(context: CoroutineContext) : AbstractCoroutine<T>(co
 
         val currentState = state.get()
         when (currentState) {
-            is CoroutineState.InComplete -> {
+            // 由于await 是主动获取 结果的操作，所以当为取消状态时，和join 一样,等就行了。
+            is CoroutineState.InComplete,CoroutineState.CancellingState -> {
                 return awaitSuspend()
             }
             is CoroutineState.Completed<*> -> {
@@ -30,9 +31,7 @@ class DefferredCoroutine<T>(context: CoroutineContext) : AbstractCoroutine<T>(co
                 println("--CompletedHandler--")
                 return awaitSuspend()
             }
-
         }
-
     }
 
     // 调用suspendCoroutine 函数挂起

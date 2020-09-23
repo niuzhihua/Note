@@ -1,17 +1,17 @@
 //    原理总结
-    // launch  ,
-    // join   ,
-    // dispatcher  ,
-    // delay  ,
-    // runBlocking ,
-    // async ,
-    // await ,
-    // sequence
+    // launch :
+    // join   :
+    // dispatcher  :
+    // delay  :
+    // runBlocking :
+    // async、await :
+    // sequence ：
     // flow
 
-    // cancel
+    // 异常处理 :
+    // cancel   :
+
     // 作用域
-    // 异常处理
     // 回调转协程
 
     // 其他：

@@ -5,12 +5,19 @@ import com.nzh.note.kotlin.myContinueation.async_await.DefferredJob
 import com.nzh.note.kotlin.myContinueation.context.MyJob
 import com.nzh.note.kotlin.myContinueation.dispatcher.DispatcherImpl
 import com.nzh.note.kotlin.myContinueation.exception.MyCoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 
+private var coroutineIndex = AtomicInteger(0)
 
-class StandaloneCoroutine(context: CoroutineContext) : AbstractCoroutine<Unit>(context) {
+
+class StandardCoroutine(context: CoroutineContext) : AbstractCoroutine<Unit>(context) {
 
     // 重写异常处理函数
     override fun myHanldeException(throwable: Throwable) {
@@ -32,12 +39,12 @@ class StandaloneCoroutine(context: CoroutineContext) : AbstractCoroutine<Unit>(c
  * 一个协程启动后有 两个Continuation 对象。
  *
  *  传入的Continuation  ：block ， 实际上是一个 SuspendLambda 。 SuspendLambda是Continuation子类。
- *  返回的Continuation ： StandaloneCoroutine
+ *  返回的Continuation ： StandardCoroutine
  *
  */
 fun myLaunch(context: CoroutineContext = EmptyCoroutineContext, block: suspend () -> Unit): MyJob {
 
-    val standardCoroutine = StandaloneCoroutine(context)
+    val standardCoroutine = StandardCoroutine(newCoroutineContext(context))
 
     // 调用 挂起函数 的 startCoroutine 函数，并传入 continuation 实例。
     // 最终回调到 continuation的 resumeWith 函数。
@@ -45,6 +52,18 @@ fun myLaunch(context: CoroutineContext = EmptyCoroutineContext, block: suspend (
 
     return standardCoroutine
 }
+
+/**
+ * CoroutineContext : 实现了 + 、- ，取([]) 运算符。
+ *
+ */
+fun newCoroutineContext(context: CoroutineContext): CoroutineContext {
+
+    val combined = context + CoroutineName("@coroutine#${coroutineIndex.getAndIncrement()}")
+    return if (combined !== Dispatchers.Default && combined[ContinuationInterceptor] == null)
+        combined + Dispatchers.Default else combined
+}
+
 
 fun <T> runBlocking(context: CoroutineContext = EmptyCoroutineContext, block: suspend () -> T): T {
     // 创建消息队列

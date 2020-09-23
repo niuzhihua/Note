@@ -21,8 +21,9 @@ sealed class CoroutineState {
     class Completed<T>(val value: T? = null, val exception: Throwable? = null) : CoroutineState()
 
     // 等待回调状态： join 的时候 可能会设置 为 这个状态。
-    class CompletedHandler<T>(val onMyResumeParam: onMyResume<T>): CoroutineState()
+    class CompletedHandler<T>(val onMyResumeParam: onMyResume<T>) : CoroutineState()
 
+    object CancellingState : CoroutineState()
 
     /**
      * 通知 已设置为 已完成状态
