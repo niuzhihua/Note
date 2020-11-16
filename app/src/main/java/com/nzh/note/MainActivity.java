@@ -7,8 +7,10 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Toast;
 
+import com.nzh.note.launchmode.StandardActivity;
 import com.nzh.note.kotlin.base.Config;
 import com.nzh.note.kotlin.myContinueation.sample.AndroidSample.CoroutineActivity;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -32,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
         config.setMoney(180.88f);
         config.setFirstName("first name");
         Toast.makeText(this, "Set:" + config, Toast.LENGTH_SHORT).show();
+
     }
 
     public void propertyGet(View view) {
@@ -42,5 +45,15 @@ public class MainActivity extends AppCompatActivity {
     public void callback2coroutine(View view) {
 
         startActivity(new Intent(this, CoroutineActivity.class));
+    }
+
+    public void testLaunchmode(View view) {
+        startActivity(new Intent(this, StandardActivity.class));
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        System.out.println("MainActivity is destroyed");
     }
 }

@@ -1,0 +1,245 @@
+﻿
+
+------------------------------------------------------
+
+	
+		
+每启动一个app,系统创建一个对应的任务栈Task . 并且Task里面有Activity 栈 。
+如果一直按返回键，那么依次关闭Activity.最后一个Activity被关闭了，Task 生命就结束了。
+
+
+android手机屏幕下面的 近期任务键 显示的是 Task 列表。生命结束的Task 也会被系统放入这个近期任务 Task列表。
+这时如果在近期任务列表点击Task 进入app,实际上是重启app.  因此，在最近任务里看见的Task 未必就是存活的。
+
+
+
+默认规则：当在ATask 中打开BTask 的一个activity,那么这个activity会被加入到 ATask里。也就是那个Task打开的Activity 就放入那个Task里。
+
+Standard: App内使用
+
+SingleTop: App内使用
+	待启动 Activity 已经位于源 Activity 所属的任务栈的栈顶时，不会创建新的 Activity，而是直接使用栈顶的 Activity，
+	并回调它的 onNewIntent 方法，onCreate 和 onStart 不会被调用，直接回调 onResume 。
+
+
+SingleTask 模式:   App内部交互和外部共享 都用。
+
+	1、当启动这个activity 时，配置为 SingleTask模式的Activity 不会 被添加到启动它 的Task里。 而是被添加到 它所属于的Task 的栈顶。
+		结论：SingleTask模式让Activity在固定的Task 里创建。
+		
+	2、如果ATask 打开了这个activity(假如是属于BTask), 那么BTask会叠加在ATask上面。打开activity时的入场动画也是Task(应用)间的动画。
+		这可以提示用户在跨任务操作. 此时依次返回，则是先从上面的BTask的activity栈依次返回，最后返回到ATask.
+		结论：不止activity在Task内部可以叠成栈，不同Task(前台Task)也可以叠成栈。
+
+	3、如果已经存在了此模式的activity,再次启动它时，
+		3.1 不会创建新的 实例， 不会onCreate 方法。而是调用onNewIntent().
+		3.2 如果此activity 在当前Task里上面压着其他activity,系统也会把这些压着的activity全部关闭，来确保此activity处于栈顶。
+
+		结论：SingleTask模式让Activity 固定在一个Task里创建，并且只有一个实例。 
+
+
+Task 由前台进入后台的标志：
+	1、按Home键回到桌面。
+	2、按最近任务键 查看最近任务.
+		前台Task在最近任务显示出来时，就已经进入后台，不是切换到其他Task之后。
+
+
+
+
+SingleInstance 模式:  用于开放给其他app时设置，用来共享。
+
+	1、有着和SingleTask模式一样的特性。
+	2、SingleInstance要求activity所在的Task里 只有一个实例，并且栈中activity的 下面和上面都不许有其他activity。
+		因此 按返回键时，SingleTask是在任务栈(App)中回退 , SingleInstance是在 应用间 回退。
+
+	场景：ATask里启动BTask中的activity(SingleInstance 模式) , 那么系统会把此activity放入单独的任务栈，
+		如果已经存在此activity,则复用，并回调 onNewIntent() 方法 。此单独的任务栈也会叠加到ATask上面。 
+
+		没有切换过后台：按返回键后的切换动画也是Task(App)间的切换动画。直到返回ATask. 
+		切换过后台： 	叠加的任务栈被打散。 按返回键后返回到桌面。
+
+		继续
+
+		如果在此activity中继续打开别的activity X, 则X不会被添加到此单独的任务栈，而是到另外Task里。
+
+
+	总结：
+		1、SingleTask会在自己的Task（App）里回退，SingleInstance会直接回退到原先的Task .(因为是单独的Task.并且里面只有一个activity。) 
+		2、按最近任务键时，SingleTask模式的activity 显示在栈顶，SingleInstance 模式的activity不见了。
+			因此在最近任务里看不见的 Task 未必就死了。 
+
+	3、
+
+----------------------------------------------------------------------------
+Task 工作模型：
+
+ TaskAffinity: 用来标识Task 在最近任务列表中 是否唯一。 
+
+	
+	0、在Android系统中 一个App最多只有一个 Task 可以显示在最近任务列表中。
+	1、每个activity都由默认的TaskAffinity ， 就是Application的TaskAffinity，而Application的TaskAffinity 是包名。 	
+	   每个Task的TaskAffinity 的值是 此Task栈底的activity的 TaskAffinity值。
+	2、在最近任务列表并列展示的 Task 它们的 TaskAffinity 肯定不一样。
+
+？
+	   为什么只有一个activity(SingleInstance模式)的Task(假如TaskX) 没像app Task一样显示在最近任务中？
+	   因为 TaskAffinity 一样了，也就是冲突了。 TaskX 和 app Task 的TaskAffinity 一样。
+?
+
+
+ TaskAffinity对activity进行分组：
+	默认情况下，一个app里所有的activity的 TaskAffinity是一样的。
+
+	启动新Task(比如启动app)--->初始化Task的TaskAffinity(值为栈底activity的 TaskAffinity)---> 打开新的Activity
+
+	
+	val launchMode = 新的activity启动模式		
+	val taskAffinity = 新的activity的taskAffinity	
+	val isFromSelfApp = 新的activity的taskAffinity == this.taskAffinity //是否来自本Task
+	when(launchMode){
+	
+		SingleTask , SingleInstance ->{		//跨Task 开打activity的规则
+
+			if this.taskAffinity == taskAffinity {
+				入栈 this task ，进入了栈顶
+
+				if exsit{
+					1:清空栈中activity上面的activity
+					2:onNewIntent()
+
+				}
+			}else{
+				// 寻找和taskAffinity 一样的Task,并入栈。
+				val destTask = searchTaskIfTaskAffinityEquals(taskAffinity)
+				if destTask == NULL{
+					创建新的Task
+					入栈新的Task
+				}else{
+					入栈destTask
+					if exsit{
+						onNewIntent()
+					}
+				}
+				
+				destTask 叠加在本Task上面
+			}
+		
+		}
+		 
+		else ->{	//  本task 打开activity.
+
+
+			不考虑 taskAffinity ,不管activity来自那个Task ,入栈 this task。也就是直接落在当前Task上。
+
+			if is SingleTop {
+				不创建Activity
+				onNewIntent()
+
+			}
+		}
+	}
+
+
+-----------------------------------------------------
+ Intent Flag :?????
+
+ 如果已经设置了 launchMode 为 singleInstance 或 singleTask，是没有必要添加 FLAG_ACTIVITY_NEW_TASK的
+ 当启动模式是 singleInstance 或者 singleTask 时，系统会自动添加FLAG_ACTIVITY_NEW_TASK 标记.
+
+
+
+
+
+---------------------------------------------------
+
+clearTaskOnLaunch：控制是否销毁 任务栈中根activity上面的activity 。
+	
+	当且仅当 在任务栈的根Activity 设置此属性为true时，如果重启任务栈时(按Home键到桌面，再从桌面点击app图标进入app)
+	则根Activity上面的activity都会被销毁。从最近任务列表进入不会有效果
+
+	注意：如果StandardActivity、StandardActivity2的启动模式为SingleInstance ，则此操作不会影响StandardActivity、StandardActivity2。
+		因为它们在单独的任务栈中， 和 根activitty 不在同一个任务栈中。
+
+	<activity android:name=".activity.StandardActivity2" />
+	<activity android:name=".activity.StandardActivity" />
+
+	<activity
+		    android:name=".MainActivity"
+		    android:clearTaskOnLaunch="true">
+		    <intent-filter>
+			<action android:name="android.intent.action.MAIN" />
+			<category android:name="android.intent.category.LAUNCHER" />
+		    </intent-filter>
+	</activity>
+
+
+------------------------------------------------------
+finishOnTaskLaunch：控制是否销毁 任务栈中除根activity外的activity 。
+
+	当在任务栈的 非根Activity 设置此属性为true时，如果重启任务栈时(按Home键到桌面，再从桌面点击app图标进入app)
+	则 仅配置当前当前属性的 activiy 被销毁。
+	
+	        <activity android:name=".activity.StandardActivity2"  android:finishOnTaskLaunch="true" />
+
+        	<activity android:name=".activity.StandardActivity" />
+		
+		// 设置在根Activity无效
+		<activity android:name=".MainActivity">
+		    <intent-filter>
+			<action android:name="android.intent.action.MAIN" />
+			<category android:name="android.intent.category.LAUNCHER" />
+		    </intent-filter>
+		</activity>	
+
+	注意：如果StandardActivity、StandardActivity2的启动模式为SingleInstance ，则此操作不会影响StandardActivity、StandardActivity2。
+	      因为它们在单独的任务栈中， 和 根activitty 不在同一个任务栈中。
+
+--------------------------------------------------------------------------------------
+excludeFromRecents： 控制任务栈是否显示在 近期任务。  
+
+		此属性为强制控制，  true:不显示。 
+
+	当前 Activity 所在任务栈是否在最近任务列表中显示。只有设置在根 Activity 上才有效果。
+
+        <activity android:name=".activity.StandardActivity2" />
+        <activity android:name=".activity.StandardActivity" />
+        <activity android:name=".MainActivity" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+	
+
+---------------------------------------------------------------------------------------
+autoRemoveFromRecents ：控制任务栈是否显示在 近期任务。  
+		
+		弱控制：当前任务栈所有activity销毁时，则app图标不显示在最近任务列表。
+
+        <activity android:name=".activity.StandardActivity2" />
+        <activity android:name=".activity.StandardActivity" />
+        <activity android:name=".MainActivity" android:autoRemoveFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+	操作路径：
+	MainActivity-->StandardActivity-->StandardActivity2-->按返回键直至到桌面-->最近任务键
+	结果： 最近任务中没有app图标。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

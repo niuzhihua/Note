@@ -1,5 +1,6 @@
 package com.nzh.note.kotlin.annotation
 
+import android.annotation.SuppressLint
 import java.lang.StringBuilder
 import java.lang.reflect.Parameter
 import java.lang.reflect.Proxy
@@ -27,6 +28,7 @@ object MyRetrofit {
      *  3、在代理实现类中 调用okhttp (传入 注解参数值)
      */
 
+    @SuppressLint("NewApi")
     inline fun <reified T> create(): T {
 
         // 获取接口中的方法 : key ：name   value: Method
@@ -47,11 +49,11 @@ object MyRetrofit {
 
             val paramsMap = method.parameters?.mapIndexed { index, parameter ->
                 parameter to index
-            }.toMap()
+            }?.toMap()
 
             val paramPathAnotationMap = mutableMapOf<Parameter, Int>()
             val queryAnotationMap = mutableMapOf<Parameter, Int>()
-            paramsMap.forEach { parameter, i ->
+            paramsMap?.forEach { parameter, i ->
                 if (parameter.isAnnotationPresent(Path::class.java))
                     paramPathAnotationMap.put(parameter, i)
                 if (parameter.isAnnotationPresent(Query::class.java))
