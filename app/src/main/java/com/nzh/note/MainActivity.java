@@ -11,6 +11,8 @@ import com.nzh.note.launchmode.StandardActivity;
 import com.nzh.note.kotlin.base.Config;
 import com.nzh.note.kotlin.myContinueation.sample.AndroidSample.CoroutineActivity;
 
+import java.util.ArrayList;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -35,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
         config.setFirstName("first name");
         Toast.makeText(this, "Set:" + config, Toast.LENGTH_SHORT).show();
 
+        ArrayList<String> s = new ArrayList<>(10);
     }
 
     public void propertyGet(View view) {
