@@ -202,7 +202,7 @@ java 并发编程：
 			3、(Why)竞争条件的影响：直接造成多线程计算过程中出现错误值，过期值，线程不安全。
 
 			4、(How)如何保证原子性，可见性？( 如何消除竞争条件 )
-				保证原子性，可见性。
+				保证原子性，可见性 , 就是消除竞争条件带来的线程不安全影响，就是保证线程安全。
 
 				到这里可以回答两个疑问了：
 
@@ -218,7 +218,7 @@ java 并发编程：
 					可见性消除了过期值。
 					错误值 和 过期值 都影响程序的正确性。
 
-			5、如果是多个可变共享变量，如何保证原子性，可见性？
+			5、如果是多个可变共享变量，要注意 ：
 
 				if(多个共享变量有关联){
 
@@ -231,69 +231,75 @@ java 并发编程：
 
 			6、( Do ) 如何实现消除竞争条件( 保证原子性 和 可见性 )。
 
-			1、synchronized ： 既保证原子性 也保证 可见性。
+                6.1、使用锁，锁机制控制共享变量， 锁同时保证了 原子性 和 可见性。
 
-					java内置的 强原子性 操作机制， (也叫独占锁、互斥锁，隐士锁，可重入锁)
+                    1、synchronized(独占锁)：
 
-					由同一个锁保护的 synchronized 代码块，会被原子性的执行，也就是不可分割的单元运行，
-					不可能看到有多个线程同时 执行由同一个锁保护的 synchronized 代码块。
+                        java内置的 强原子性 操作机制， (也叫独占锁、互斥锁，隐士锁，可重入锁)
 
-					synchronized 锁保证了多线程在操作可变共享变量 时的原子性、可见性。
-					使用synchronized锁 时， 读线程 和 写线程 必须用同一个锁对象。这样才能保证所有线程
-					看到共享变量的最新值。
+                        由同一个锁保护的 synchronized 代码块，会被原子性的执行，也就是不可分割的单元运行，
+                        不可能看到有多个线程同时 执行由同一个锁保护的 synchronized 代码块。
 
-
-					问题：在多线程操作一个可变共享变量时，为什么要求所有线程用同一把锁来同步？
-					      为了保证一个线程对变量的写入，其他线程都可以看见。否则其他线程看到的可能是过期的数值。
-
-			2、显式锁：Lock、ReadWriteLock.等
-                TODO()
-
-			 保证原子性：
-
-				原子类： java.util.concurrent.atomic.*
-
-				例子1： 线程安全的 ：
-					// AtomicLong ：保证原子性
-					// final : 保证可见性
-					public class CountingFactorizer implements Servlet {
-
-						private final AtomicLong count = new AtomicLong(0);
-
-						public long getCount() { return count.get(); }
-
-						public void service(ServletRequest req, ServletResponse resp) {
-
-							BigInteger i = extractFromRequest(req);
-							BigInteger[] factors = factor(i);
-							count.incrementAndGet();
-							encodeIntoResponse(resp, factors);
-						}
-					}
-
-				例子2：线程不安全 ，虽然对多个共享变量 进行了 原子操作，但是它们有关联。
-					这样 就不是 原子操作就失效了，必须是 所有有关联的 共享变量 一起进行原子操作。
+                        synchronized 锁保证了多线程在操作可变共享变量 时的原子性、可见性。
+                        使用synchronized锁 时， 读线程 和 写线程 必须用同一个锁对象。这样才能保证所有线程
+                        看到共享变量的最新值。
 
 
-					public class UnsafeCachingFactorizer implements Servlet {
-					// 多个原子变量
-					private final AtomicReference<BigInteger> lastNumber = new AtomicReference<BigInteger>();
-					private final AtomicReference<BigInteger[]> lastFactors = new AtomicReference<BigInteger[]>();
+                        问题：在多线程操作一个可变共享变量时，为什么要求所有线程用同一把锁来同步？
+                              为了保证一个线程对变量的写入，其他线程都可以看见。否则其他线程看到的可能是过期的数值。
 
-					public void service(ServletRequest req, ServletResponse resp) {
+			        2、显式锁：Lock、ReadWriteLock.等
+                        TODO()
 
-						BigInteger i = extractFromRequest(req);
-						// if 语句使得 多个原子变量之间有了联系。
-						if (i.equals(lastNumber.get()))
-							encodeIntoResponse(resp, lastFactors.get() );
-						else {
-							BigInteger[] factors = factor(i);
-							lastNumber.set(i);
-							lastFactors.set(factors);
-							encodeIntoResponse(resp, factors);
-						}
-					 }
-					}
+                6.2、使用原子变量类(java.util.concurrent.atomic.*) 或 采用非阻塞算法的容器(java.util.concurrent.ConcurrentXXX)
+                     操作共享变量。
+                     它们底层都采用了 硬件支持的原子操作指令：compareAndSwap/compareAndSet
+                     compareAndSwap/compareAndSet 既能提供原子性，又能提供可见性保证。
+
+                    例子1： 线程安全的 ：
+
+                    原子类： java.util.concurrent.atomic.*
+
+                        // AtomicLong ：保证原子性
+                        // final : 保证可见性
+                        public class CountingFactorizer implements Servlet {
+
+                            private final AtomicLong count = new AtomicLong(0);
+
+                            public long getCount() { return count.get(); }
+
+                            public void service(ServletRequest req, ServletResponse resp) {
+
+                                BigInteger i = extractFromRequest(req);
+                                BigInteger[] factors = factor(i);
+                                count.incrementAndGet();
+                                encodeIntoResponse(resp, factors);
+                            }
+                        }
+
+                    例子2：线程不安全 ，虽然对多个共享变量 进行了 原子操作，但是它们有关联。
+                        这样 就不是 原子操作就失效了，必须是 所有有关联的 共享变量 一起进行原子操作。
+
+
+                        public class UnsafeCachingFactorizer implements Servlet {
+                        // 多个原子变量
+                        private final AtomicReference<BigInteger> lastNumber = new AtomicReference<BigInteger>();
+                        private final AtomicReference<BigInteger[]> lastFactors = new AtomicReference<BigInteger[]>();
+
+                        public void service(ServletRequest req, ServletResponse resp) {
+
+                            BigInteger i = extractFromRequest(req);
+                            // if 语句使得 多个原子变量之间有了联系。
+                            if (i.equals(lastNumber.get()))
+                                encodeIntoResponse(resp, lastFactors.get() );
+                            else {
+                                BigInteger[] factors = factor(i);
+                                lastNumber.set(i);
+                                lastFactors.set(factors);
+                                encodeIntoResponse(resp, factors);
+                            }
+                         }
+                        }
 
 					修改后：
 					public void service(ServletRequest req, ServletResponse resp) {
@@ -326,6 +332,7 @@ java 并发编程：
 
 				使用锁
 
+
 			X、组合方式： 使用线程安全的对象管理 可变共享变量
 
 			 	 Hashtable
@@ -352,7 +359,6 @@ java 并发编程：
 				public final Map<String, Date> map = Collections.synchronizedMap(new HashMap<String, Date>());
 
 				可变共享对象 使用时 必须安全 发布 ，且是线程安全的对象。
-
 
 		Question ：
 
