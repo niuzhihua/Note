@@ -6,9 +6,9 @@ package com.nzh.note.kotlin.annotation
  *   注解可用于 源码级，编译器，运行时
  */
 // 注解的定义方式
-@Target(AnnotationTarget.CLASS)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class Api(val url: String)
+@Target(AnnotationTarget.CLASS)         // 用于 类
+@Retention(AnnotationRetention.RUNTIME) // 运行时注解
+annotation class Api(val url: String)   // 注解参数类型 String
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
