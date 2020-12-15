@@ -1,6 +1,7 @@
 package com.nzh.note.data_structures.list
 
 import com.nzh.note.data_structures.list.base.SingleLinkList
+import com.nzh.note.data_structures.list.base.SingleLinkList2
 
 /**
  * 基于单链表 实现的栈
@@ -8,7 +9,7 @@ import com.nzh.note.data_structures.list.base.SingleLinkList
  */
 class Stack<T> {
     // 单链表
-    val singleLinkList = SingleLinkList<T>()
+    val singleLinkList = SingleLinkList2<T>()
 
     fun push(value: T) {
         singleLinkList.addFirst(value)
