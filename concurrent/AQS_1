@@ -50,11 +50,6 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
 
         acquireInterruptibly TODO
 
-        int tryAquireShared(int) :
-        boolean tryReleaseShared(int) :
-        void acquireShared(int arg)
-        boolean releaseShared(int arg)
-
         boolean isHeldExclusively() :  当前同步器(AQS子类对象)是否被线程独占。  true: 是
         getQueuedThreads()  :   查询队列中线程数量
         getExclusiveQueuedThreads() ：
@@ -237,12 +232,12 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                                     break
                                 defalut:    // 0、-2、-3
                                     更新前节点P ：waitStatus = SIGNAL
-                                    // TODO(由此可见， 获取state成功即正在运行的线程 的waitStatus 的值，是被后续线程修改为SIGNAL状态的。)
-                                    // TODO(由于是死循环，所以后续线程就会检测到 前节点P.waitStatus 为SIGNAL，后续线程也就阻塞了。 )
+                                    // TODO(由此可见， 前节点 的waitStatus 的值，是被当前线程(前节点的后继节点)修改为SIGNAL状态的。)
+                                    // TODO(由于是死循环，所以当前线程(node) 就会检测到 前节点P.waitStatus 为SIGNAL，当前线程也就阻塞了。 )
                                     break
                             }
-                           // TODO(当前线程是那个节点的线程？如何判断)
-                           // TODO(中断状态是那个线程的)
+                           // TODO(当前线程是那个 线程？ 就是调用acquire的线程，)
+                           // TODO(中断状态是那个线程的？ 当然是当前线程的喽)
                            if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
                                interrupted = true;
                        }
@@ -328,12 +323,9 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                     if (t.waitStatus <= 0)  // 如果node 的状态 不是 canceled(值为1)
                         s = t;              // 记录 状态不为 canceled的 node
                 TODO(这里的s最终是 头结点后面第一个节点)
-
-
-
             }
             // 通过调用底层(操作系统)的函数来唤醒线程。
             if (s != null)
-                    LockSupport.unpark(s.thread);   // 唤醒node 中的线程
+                    LockSupport.unpark(s.thread);   // 唤醒队列中下一个线程
         }
 
