@@ -1,0 +1,183 @@
+概念理解：
+    state-dependence : 这里state不理解为状态。理解为数据. 比如一个对象的state就是它的数据(fields).这里把这个词理解为
+                       依赖数据的的条件。 其实就是 竞态条件 。在多线程环境下，涉及到竞态条件时，条件中必有共享变量参与。
+                       竞态条件：由共享变量参与的 影响线程安全的 条件。
+    Managing State Dependence : 管理对象数据(Fields)之间的依赖
+
+    What:
+
+    自定义 Synchronizer 要做什么?
+        答：管理对象数据(Fields)之间的依赖关系
+
+    如何管理对象数据(Fields)之间的依赖关系 ?
+        简单分析就是 管理 数据之间的关系 ，我们看一下其中的要素，包括三个 。
+            数据： 即共享变量 (也叫对象的state 或 fields).
+            依赖关系： 就是竞态条件， 依赖关系必 用到 数据。
+            管理：用什么管理呢，当然时管理工具，什么管理工具呢？锁呗。
+
+            规则就是下面的 逻辑 :
+
+            注意：这里的锁是 显示锁Lock
+
+            void blockingAction() throw InterruptedException{
+                    获取锁 : acquire lock on object state
+                    while( 不满足竞态条件){
+                        释放锁
+                        等待 直到 竞态条件满足
+                        if(当前线程interrupted || 超时 ){
+                            fail()
+                            重新获取锁
+                        }
+                    }
+                     // 执行业务
+                     performAction()
+            }
+
+            TODO():AQS
+
+    How:
+
+    实现：为了循序渐进的理解，这里介绍了 几种 实现方式: 轮询 + 休眠方式、 条件队列方式、显示锁 方式 .
+          其中轮询+休眠方式 是为了理解后面的方式而存在的。如果要开发自己的 同步器(Synchronizer) ,
+          要用 [条件队列方式]、[显示锁方式 或 AQS ] .
+
+          显示锁 是 基于AQS的。
+
+    先来看一种 painfully(痛苦的) 的方式 : 轮询 + 休眠
+
+    例子：有限的缓存/队列: BoundedBuffer / BoundedQueue
+
+    @ThreadSafe
+    public class GrumpyBoundedBuffer<V> extends BaseBoundedBuffer<V> {
+        public GrumpyBoundedBuffer(int size) { super(size); }
+        public synchronized void put(V v) throws BufferFullException {
+            if (isFull())   // 竞态条件失败后的处理 抛给了 调用者。
+                throw new BufferFullException();
+            doPut(v);
+        }
+        // 缺点：1、使用麻烦，需要处理异常。
+        //       2、竞态条件失败后的处理 抛给了 调用者。
+        public synchronized V take() throws BufferEmptyException {      // 第1版
+            if (isEmpty())  // 竞态条件失败后的处理 抛给了 调用者。
+                throw new BufferEmptyException();
+            return doTake();
+        }
+        // 缺点：没有解决根本问题，即调用者需要自行处理 竞态条件失败的逻辑。
+        //
+        public synchronized V take() throws InterruptedException {    // 第2版
+           // 竞态条件失败后，在循环中不停的重试。
+           while (true) {
+               try {
+                    V item = buffer.take();
+                    // use item
+                    break;
+               } catch (BufferEmptyException e) {
+                    Thread.sleep(SLEEP_GRANULARITY);
+                    // 等待：属于自旋等待，线程容易睡过头。  低CPU使用率，弱响应性。
+                    // 不等待：属于忙等待，消耗CPU.
+               }
+           }
+        }
+        // 调用者不用处理失败和重试。需要 在CPU使用率 和 响应性之间 做出权衡。
+        public V take() throws InterruptedException {           // 第3版
+            while (true) {
+                synchronized (this) {
+                    if (!isEmpty())
+                    return doTake();
+                }
+                // 休眠时间越短，CPU使用率越高，响应性越好。
+                // 反之时间越短，CPU使用率越低，响应性约弱。
+                // 这使得调用者需要 在CPU使用率 和 响应性之间 做出权衡。
+                Thread.sleep(SLEEP_GRANULARITY);
+            }
+        }
+
+        上述方案都不令人满意， 如果 存在让线程挂起的方法，并且保证当竞态条件为真时， 线程可以及时苏醒，那就完美了。
+        重点：condition queue 就可以解决 上述的不完美。
+
+    }
+
+    第二种方式：使用condition queue
+
+            condition queue ： 它可以让一组线程，以某种方式 等待 竞态条件为真 ， 它的元素不是数据项，而是 等待竞态条件的线程。
+
+            比起轮询+休眠，condition queue方式在 CPU使用率，线程上下文切换，响应性 等方面优化的结果。
+            condition queue 方式 使得 管理对象数据(Fields)之间的依赖 变得简单、高效。
+
+
+            @ThreadSafe
+            public class BoundedBuffer<V> extends BaseBoundedBuffer<V> {
+                // 竞态条件: not-full (!isFull())
+                // 竞态条件: not-empty (!isEmpty())
+                public BoundedBuffer(int size) { super(size); }
+                // BLOCKS-UNTIL: not-full
+                public synchronized void put(V v) throws InterruptedException {
+                    while (isFull())        // 当竞态条件为真时
+                    wait();                 // 让线程等待,并释放锁
+                    doPut(v);               // perform task
+                    notifyAll();            // 唤醒线程
+                }
+                // BLOCKS-UNTIL: not-empty
+                public synchronized V take() throws InterruptedException {
+                    while (isEmpty())    // 当竞态条件为真时
+                    wait();             // 让线程等待,并释放锁
+                    V v = doTake();     // perform task
+                    notifyAll();        // 唤醒线程
+                    return v;
+                }
+            }
+
+             一把锁关联一个 condition queue,多个线程为了不同的 竞态条件在 同一个条件队列中等待.
+
+            缺点：性能不好。
+                  如果有10个线程在 condition queue 中等待，调用notifyAll() 会唤醒每一个线程，让它们去竞争锁，
+                  然后它们中的大多数又会回到休眠状态。 这会带来大量的 线程上下文切换、锁竞争。
+
+                  优化:采用单一线程的通知,而不是通知唤醒所有线程. 在这个例子中实现比较复杂.
+                       在下面第3中方式 可以做到.
+
+      第3种方式：使用Condition :    一个Lock对应多个Condition,一个Condition对应一个 竞态条件.
+
+                 优点: 唤醒单个线程时比较简单,而不是 使用notifyAll(). 这样减少了很多线程上下文切换.
+
+                 @ThreadSafe
+                 public class ConditionBoundedBuffer<T> {
+                         protected final Lock lock = new ReentrantLock();
+                         // 竞态条件: notFull (count < items.length)
+                         private final Condition notFull = lock.newCondition();
+                         // 竞态条件: notEmpty (count > 0)
+                         private final Condition notEmpty = lock.newCondition();
+
+                         // notFull：notFull为真(队列不满) , 才能 put
+                         public void put(T x) throws InterruptedException {
+                             lock.lock();
+                             try {
+                                 while (count == items.length)
+                                 notFull.await();
+                                 // 受锁保护 的入队操作.....
+                                 notEmpty.signal();
+                             } finally {
+                                lock.unlock();
+                             }
+                         }
+
+                     //  notEmpty : notEmpty为真(队列不为空) , 才能 take
+                     public T take() throws InterruptedException {
+                         lock.lock();
+                         try {
+                             while (count == 0)
+                             notEmpty.await();
+                             // 出对操作....
+                             notFull.signal();
+                             return x;
+                         } finally {
+                            lock.unlock();
+                         }
+                     }
+
+
+                 }
+
+
+
+

@@ -16,8 +16,12 @@ import java.util.concurrent.Semaphore
  *          addFirst、addLast :添加到链表头部和尾部
  *          addAt : 根据索引添加
  *
- *      查找：getFirst、getLast ： 获取头节点和尾节点 数据
+ *      查找：
+ *            getFirst、getLast ： 获取头节点和尾节点 数据
  *            get(index) : 根据索引查找
+ *
+ *      删除：删除某个结点Node 需要知道其前驱结点
+ *          remove(value)
  *
  *   了解了单链表的实现后，就很容易来实现栈，队列了。
  *

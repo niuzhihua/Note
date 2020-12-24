@@ -1,0 +1,339 @@
+CAS: V compareAndSwap(expectValue,newValue) : 永远返回变量的 真实值
+AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组件。AQS是面向 锁或其他同步器 的开发者的 ，
+                  AQS实现了同步状态管理，线程的排队、等待、唤醒等操作。 一种是面向同步器使用者，一种面向同步器实现者。
+
+    AQS是一个用来实现同步器的基础组件，通过先进先出(FIFO) 的等待队列(wait queue), 来实现 锁(blocking locks) 和 同步器(synchronizers) 的基础功能。
+    在AQS中，用一个原子性Int变量  来代表 同步器的状态 ，子类必须定义 protected methods 来变更这个状态。就子类对象而言，它的释放和获取用不同的
+    状态(state) 来表示。 AQS中其他的方法来完成 排队和阻塞 操作。 子类可以维护其他状态字段，但是只有被原子性的更新的字段 操作
+    getState、setState、compareAndSetState等方法时， 才可以实现同步 。
+
+    AQS类的子类 应该被定义为 非公共的(non-public) 内部帮助类(help class) 。 AQS没有实现任何接口，而是 定义了一些方法来代替接口。
+
+    AQS 单独或同时支持 独占模式(exclusive)、共享模式(shared)。 当获取到锁 进入独占模式后 ，其他线程获取不到锁. 而获取到锁 为共享模式时,
+    其他线程有可能获取到锁. ....在独占和共享模式下等待的线程 共享 同一个队列。一般情况下，子类只支持一种模式(独占模式或共享模式)，但是同时
+    支持两种模式也可以，比如读写锁 ReadWriteLock。 只支持一种模式的子类 不必再定义(复写) 另外一种模式的方法(也好理解：比如子类只支持独占模式，
+    那么只复写独占模式相关的方法即可，共享模式涉及到的方法不用考虑)。
+
+    -----------------------------------------------------------------------
+    TODO(Q: 同步队列head、tail是节点吗？
+        head 是头节点， head = new Node() 。  tail 是尾节点的引用(指针)  tail->尾节点 )
+
+    TODO(Q: head是哨兵节点吗？如果是节点的话)
+        可以理解为哨兵节点。 head头结点中没有存储线程，仅作条件判断使用。
+    TODO(Q: 同步队列的数据结构是什么？ )
+        是由双链表构成的队列。但是 入队操作只用了 前驱指针来链接整个链表。后继指针指向了自己。当队列(A<-B<-C)中的某个节点B状态为 canceled时，这个节点
+        就被删除了，删除后则变为 A<-C ，此时 A.next -> C . 所以如果没有节点被删除，那么 所有Node 的next 就指向自己。 若由节点被删除，则next指向下一个节点。
+    TODO(Q: 为什么release 方法中从队尾开始查找节点？)
+        因为 这个队列虽然用了双向链表，但是只用了前驱节点 prev 来构成链表 ，并且 head.next -> null.
+        next只有在删除节点时才会有指向。所以从head开始遍历， head.next 是不是为空不确定。
+        而从队尾tail 开始遍历，则查找的node一定不为空 .
+
+    ------------------------------------------------------------
+    AQS涉及到的概念：
+            同步队列、
+            独占式的获取和释放(更新)同步状态(state)、
+            共享式的获取和释放(更新)同步状态(state)、
+            超时获取同步状态(state)、
+
+        锁时同步器的一种实现形式，锁是面向使用者的，定义了使用锁的接口，隐藏了实现细节。
+
+        独占锁：同一时刻只能有一个线程持有，其他获取锁的线程 只能在队列中等待，只有持有锁的线程释放锁后，后继的线程才能获取锁。
+
+        AbstractOwnableSynchronizer.setExclusiveOwnerThread(Thread thread) : 设置当前线程为锁的 独占式的持有者。
+
+        boolean tryAquire(int)  ：   由AQS子类来实现，独占式的更新状态(state成员)。 true: 设置 state的值 不同于tryRelease设置的值
+        boolean tryRelease(int) ：   由AQS子类来实现，独占式的更新状态(state成员)。 true: 设置 state的值 不同于tryAquire设置的值
+
+        void acquire(int arg)   ：   1、获取同步状态，也就是state变量的值 ，获取失败进入队列等待。
+                                     2、忽略线程的中断状态。即获取state失败后进入同步队列后，如果对线程执行了中断操作，线程不会从同步队列移除。
+        boolean release(int arg)：   释放同步状态，将同步队列中的第一个节点(中的线程) 唤醒。   给同步工具来调用的。
+
+        acquireInterruptibly TODO
+
+        int tryAquireShared(int) :
+        boolean tryReleaseShared(int) :
+        void acquireShared(int arg)
+        boolean releaseShared(int arg)
+
+        boolean isHeldExclusively() :  当前同步器(AQS子类对象)是否被线程独占。  true: 是
+        getQueuedThreads()  :   查询队列中线程数量
+        getExclusiveQueuedThreads() ：
+        getSharedQueuedThreads()
+
+    同步队列中Node节点的状态： volatile int waitStatus
+            用waitStatus字段来描述 。取值为 CANCELLED、SIGNAL、CONDITION、PROPAGATE
+
+                static final int CANCELLED =  1
+                        用来表示当前节点的线程已经取消了 ： 因为超时或者被中断等原因，当前节点失效了(线程需要被取消)。
+                         一个被取消的线程(节点的watiStatus状态为CANCELLED) 不会再次阻塞。
+
+                static final int SIGNAL    = -1
+                        由于后继节点中的线程处于阻塞状态，当前节点中的线程释放或者取消时  必须 唤醒后继节点中的线程。
+                        acquire 方法第一次执行需要一个信号，也就是这个信号。
+                        用来表示后继线程(后继节点中的线程)需要唤醒。
+
+                static final int CONDITION = -2;
+                        用来表示线程正在等待一个条件
+
+                static final int PROPAGATE = -3;
+                        waitStatus value to indicate the next acquireShared should
+                        unconditionally propagate
+
+------------------------------------------------------------------------------------
+    acquire方法分析：
+        /**
+         *    通过执行(最少执行一次)tryAcquire 方法来获取state(忽略线程是否中断的)。获取成功则当前线程处于独占状态。
+         *
+         *    如果获取state成功 , 直接返回 。
+         *    如果获取state失败 ，创建Node(当前线程)并 线程安全的加入到队尾 。从新创建的Node节点 开始死循环前节点。
+         *    死循环逻辑: 1、前节点是不是头结点 和 获取state是否成功。
+                          2、处理头结点的状态。
+                        -------------------------------------
+                        判断前节点是不是头节点 ：
+                        TODO("理解这个条件很重要，这使得出队规则按照FIFO进行。如果队列中的任意线程无故被唤醒了，它的前节点不是头节点，也得阻塞。这样保证了出队顺序。")
+                        是头节点 && 获取state成功 return
+                        否则
+                            根据前节点状态 处理
+                            switch(前节点.waitStatus){
+                                case SIGNAL
+                                    // 阻塞当前线程
+                                    break
+                                case CANCELLED
+                                    // 删除前节点
+                                    break
+                                case PROPAGATE
+                                    // 更新为 SIGNAL状态
+                                    break
+                            }
+
+         *  当前线程从acquire(int arg)方法返回，如果对于锁这种并发组件而言，代表着当前线程获取了锁。
+         */
+        public final void acquire(int arg) {
+
+        // 如果 tryAcquire(arg) 为true, 则 && 条件不用判断后面的了，当前方法直接返回了。
+        // 为false,则必执行 acquireQueued(addWaiter(Node.EXCLUSIVE), arg)。
+
+            TODO(核心点1：addWaiter方法 将获取失败(tryAcquire==fasle)的线程打包进node,并线程安全的添加到队尾。 )
+            // 返回当前新创建的节点 node , 并保证把node节点线程安全的添加到了队尾。
+         // addWaiter(Node.EXCLUSIVE)：{
+            Node node = new Node(currentThread,mode) //创建Node节点，并封装进 当前线程和模式 两个成员 .
+
+            队列不为空：将node 线程安全的加入队尾 ，返回node.
+            if(尾节点 != null){    // 线程安全的将node节点插入队尾
+                node.prev = tail;
+                if (compareAndSetTail(tail, node)) { // 线程安全(CAS)的更新尾节点tail 为 node节点 , 如果成功，则返回node.
+                    tail.next = node    // node 成功加入了队尾
+                    return node
+                }
+            }
+
+            // 线程安全的将 node 节点 添加到队尾。
+            //enq(node){
+                for (;;) {
+                    if(tail == null){ // 线程安全的初始化 head指向、tail指向。命中表示： tail = head = new Node()
+                         if (compareAndSetHead(new Node())){    // TODO(1、线程安全的初始化 tail 和 head ， head和tail 同时指向空node )
+                            tail = head         // TODO(为什么要new Node()? )
+                         }
+                    }else{  // 线程安全的将node节点插入队尾
+
+                        //  head、tail-> new Node() <- node ->null   TODO(注意不是 head.next、tail.next -> new Node() )
+                        //  等同于  head、tail、node.pre -> new Node()
+
+                        node.prev = tail    //node.prev -> new Node()
+
+                        if (compareAndSetTail(tail, node)) { // 命中后：tail = node 或 tail -> node
+
+                            tail.next = node   // TODO(注意：tail.next就是 node.next) 假设：head->new Node() <- node -> Self
+
+                            return tail
+                        }
+                        /**********************************************
+                        // 第 2 次添加 理解
+
+                             node2.prev = tail   // node<-node2  或 node2.pre -> node
+                             // tail、node2.pre  -> node
+
+                            if (compareAndSetTail(tail, node2)) {  //TODO(命中表示：tail = node2 或 tail->node2 ) 此时，更新前tail指向的是node. 更新后tail 指向node2 .
+
+                                tail.next = node2        // tail.next就是node2.next:  head -> new Node()<- node<- node2 ->Self
+
+                                return tail
+                            }
+
+                            // 第 3 次添加 理解
+                             node3.prev = tail   //  node2 <- node3 或 node3.pre -> node2
+
+                            if (compareAndSetTail(tail, node3)) {  //TODO(命中表示：tail = node3 或 tail->node3 )
+
+                                tail.next = node3        // tail.next就是node3.next ： head -> new Node()<- node <- node2 <- node3 ->Self
+
+                                return tail
+                            }
+
+                            // 以此类推：
+                            第 n 次添加 ：
+                            head -> new Node()<- node <- node2 <- node3 <- nodeN ->Self
+
+                            ***************************************/
+                    }
+                }
+            }
+
+
+            // for (;;) {
+                   不停的判断 当前节点的前节点 是否为 头节点.
+                   if(当前节点的前节点是头节点){
+                        if(调用tryAcquire获取状态成功){
+                            return 当前线程的中断状态
+                        }
+                   }else{
+                        if(前节点P是SIGNAL状态)
+                              就阻塞当前线程
+                              interrupted = true
+                        else {
+                              如果前节点P是CANCELLED状态，就删除P节点。
+                              如果前节点P是PROPAGATE状态，就更新为 SIGNAL状态。
+                        }
+
+                   }
+             }
+
+             TODO(核心点2：)
+             /**
+              * @param node : 获取状态失败的线程所在node. 即新创建的node,也是tail(指向尾节点)。
+              * 经过上面分析，addWaiter方法指向过后，  node.next指向自己。 node.pre指向前节点
+              *     前节点 <-pre. node .next-> Self
+              /
+            //acquireQueued(node, arg) { // (和acquire方法一样都是) 给条件等待方法(condition wait methods) 来使用。
+                boolean failed = true;
+                try{
+                       boolean interrupted = false;
+
+                       for (;;) {   // 不停的判断 当前节点的前节点 是否为 头节点.
+                                    // if(当前节点的前节点是头节点){
+                                            if(调用tryAcquire获取状态成功){
+                                                return 当前线程的中断状态
+                                            }
+                                       }
+                           final Node p = node.predecessor();  // 获取node的前节点
+                           if (p == head && tryAcquire(arg)) { // 如果 [前节点是头结点] 并且 [获取state成功]
+                                TODO(理解这点很重要： 只有头节点才能出队。p == head 命中表示 p为头节点。)
+                                TODO(p节点出队前: head->p(头节点)->node 一定要注意不是 head.next->p(头节点)->node )
+                                TODO(p节点出队后：head->node 一定要注意不是 head.next->node )
+                               setHead(node)                   // 将当前节点 node 设为头节点
+                               p.next = null            //断开前节点next引用 . TODO(这样前节点就出队了)   help GC
+
+                               failed = false;
+                               return interrupted;
+                           }
+
+                            switch(前节点P.waitStatus){
+                                SIGNAL :    //值为-1
+                                    阻塞当前线程, 当前线程就是 node节点里的线程喽。
+                                    interrupted = true
+                                    return true
+                                CANCELLED :  //值为1 ：  waitStatus>0 不就是 waitStatus==1
+                                    就删除P节点: 效果看图
+                                    break
+                                defalut:    // 0、-2、-3
+                                    更新前节点P ：waitStatus = SIGNAL
+                                    // TODO(由此可见， 获取state成功即正在运行的线程 的waitStatus 的值，是被后续线程修改为SIGNAL状态的。)
+                                    // TODO(由于是死循环，所以后续线程就会检测到 前节点P.waitStatus 为SIGNAL，后续线程也就阻塞了。 )
+                                    break
+                            }
+                           // TODO(当前线程是那个节点的线程？如何判断)
+                           // TODO(中断状态是那个线程的)
+                           if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
+                               interrupted = true;
+                       }
+                }finally{
+                    if (failed)
+                    //命中条件：tryAcquire(arg) 抛出异常
+                                或
+                                node.predecessor() 抛出异常：意味这node节点就是head节点
+                    cancelAcquire(node);
+                }
+
+
+            }
+
+            if (!tryAcquire(arg) &&
+                acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+                selfInterrupt();
+        }
+
+        // parkAndCheckInterrupt{  // [阻塞线程] 并检查线程 [是否处于中断状态]
+              LockSupport.park(this);    // 阻塞线程
+              return Thread.interrupted();
+        }
+
+        //shouldParkAfterFailedAcquire(前节点pred,当前节点node){ : 获取state失败时，判断线程是否应该阻塞
+             判断前节点的等待状态 的值
+             int ws = pred.waitStatus
+             if(ws == Node.SIGNAL) return true  //后继节点中的线程需要唤醒
+
+             if (ws > 0) {    // >0 表示pred节点为CANCELLED状态
+
+                  //   删除状态为CANCELLED 的 (pred) 节点 。
+                 do {
+                     node.prev = pred = pred.prev;  // 删除节点pred
+                 } while (pred.waitStatus > 0) // 当为CANCELLED状态时
+                 pred.next = node
+
+             } else {
+                  // 将状态更新为 SIGNAL
+                 compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
+             }
+             return false;
+
+        }
+
+    ----------------------------------------------------------------------------------------------
+    release方法 ：
+        /**
+         *  用来 唤醒 一个或多个线程。
+         *  tryRelease ： 和tryAcquire一样， 由子类来实现。Release(释放)本质上就是线程安全的更新了state的值。
+         *
+         * return true : 处于独占状态的线程解除了独占状态 。 false: 解除独占状态失败。
+         */
+        public final boolean release(int arg) {
+            // 如果释放成功, 返回true
+            if (tryRelease(arg)) {
+                Node h = head;
+                if (h != null && h.waitStatus != 0) // 0表示没意义。
+
+                    // 从头节点开始唤醒(节点中的线程)
+                    unparkSuccessor(h);
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * @param node : 头节点
+         */
+        private void unparkSuccessor(Node node) {
+
+            int ws = node.waitStatus;
+            if (ws < 0)  compareAndSetWaitStatus(node, ws, 0)  // waitStatus 为负数就 设为0
+
+            // 根据入队的情况来看，虽然Node节点中有 pre、next 。但是 只用了pre来链接整个链表。
+            //  所以 同步队列其实是一个单链表。 那 头节点.next 则为null.
+            Node s = node.next
+
+            if (s == null || s.waitStatus > 0) {
+                s = null;
+                 // 从队尾 向 队头 循环查找。s最终是指向 头结点后面第一个节点( 因为有这个条件：t != node )。
+                for (Node t = tail; t != null && t != node; t = t.prev)
+                    if (t.waitStatus <= 0)  // 如果node 的状态 不是 canceled(值为1)
+                        s = t;              // 记录 状态不为 canceled的 node
+                TODO(这里的s最终是 头结点后面第一个节点)
+
+
+
+            }
+            // 通过调用底层(操作系统)的函数来唤醒线程。
+            if (s != null)
+                    LockSupport.unpark(s.thread);   // 唤醒node 中的线程
+        }
+

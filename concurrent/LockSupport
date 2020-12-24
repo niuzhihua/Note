@@ -1,0 +1,33 @@
+
+LockSupport: 提供了有效的阻塞线程 park() 和唤醒线程 unPark() 方法 ，用来构建更高水平的同步工具，并不是给应用程序用的.
+             在Linux平台，底层是通过POSIX线程 实现的。
+
+
+        如果线程执行到park()时 被中断了(interrupted) ,那么 park 方法会直接返回。
+        park 方法在执行时可能会无故的返回，因此一般来讲必须在循环中 调用park 方法，在返回之前要不停的检测条件。
+        park 方法是忙等待的一种优化，必须和 unPark 成对 出现。
+
+        blocker: 有3个带object 参数的 park 方法:
+              当线程阻塞时，参数object用来允许 监控和诊断工具定位线程阻塞的原因。
+              static  void park(Object blocker)
+              static  void parkNanos(Object blocker, long nanos)
+              static  void parkUntil(Object blocker, long deadline)
+
+
+        public static void park(Object blocker) {   // 阻塞线程
+            Thread t = Thread.currentThread();
+
+           //记录当前线程阻塞的原因,底层就是unsafe.putObject,就是把对象存储起来。
+            setBlocker(t, blocker);
+            //执行park 方法阻塞
+            unsafe.park(false, 0L);
+           //线程恢复后，去掉阻塞原因
+            setBlocker(t, null);
+        }
+
+        public static void unpark(Thread thread) {  // 唤醒线程
+            if (thread != null)
+                UNSAFE.unpark(thread);
+        }
+
+
