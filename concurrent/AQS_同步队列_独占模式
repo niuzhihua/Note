@@ -101,11 +101,11 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                                     break
                             }
 
-         *  当前线程从acquire(int arg)方法返回，如果对于锁这种并发组件而言，代表着当前线程获取了锁。
+         *  当前线程从acquire(int arg)方法返回，表示当前线程独占state成功.  如果对于锁这种并发组件而言，代表着当前线程获取了锁。
          */
         public final void acquire(int arg) {
 
-        // 如果 tryAcquire(arg) 为true, 则 && 条件不用判断后面的了，当前方法直接返回了。
+        // 如果 tryAcquire(arg) 为true , 则 当前线程独占state成功。  && 条件不用判断后面的了， 直接返回 。
         // 为false,则必执行 acquireQueued(addWaiter(Node.EXCLUSIVE), arg)。
 
             TODO(核心点1：addWaiter方法 将获取失败(tryAcquire==fasle)的线程打包进node,并线程安全的添加到队尾。 )
@@ -215,8 +215,14 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                                 TODO(理解这点很重要： 只有头节点才能出队。p == head 命中表示 p为头节点。)
                                 TODO(p节点出队前: head->p(头节点)->node 一定要注意不是 head.next->p(头节点)->node )
                                 TODO(p节点出队后：head->node 一定要注意不是 head.next->node )
-                               setHead(node)                   // 将当前节点 node 设为头节点
-                               p.next = null            //断开前节点next引用 . TODO(这样前节点就出队了)   help GC
+                               setHead(node) {          // 将当前节点node(此时是尾节点)  设为头节点
+                                    head = node;        // 0：头指针链接
+                                    node.thread = null;
+                                    node.prev = null;   // 1：前驱指针断开
+                               }
+                               p.next = null            // 2：断开前节点next引用    help GC
+
+                               TODO(独占state成功的线程所在node 就是头结点 ：0、1、2 三步就是尾节点设置为头节点 的过程 )
 
                                failed = false;
                                return interrupted;

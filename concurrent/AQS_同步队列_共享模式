@@ -1,0 +1,164 @@
+前面了解了以独占的方式获取state变量，下面再看看以共享的方式来获取、释放 state。
+
+    两种方式的对比
+    独占: 子类实现tryAcquire方法时,返回bool值 : 成功或失败
+         一个线程拿到state后，后续线程拿不到state, 这是由子类完成.
+         一个线程拿到state后， 后续线程必须等待.
+         AQS的tryAcquire调用了两次 tryAcquire .但是只有release() 唤醒后继线程
+         结果：只有一个线程能处于独占状态。
+
+    共享 :子类实现tryAcquireShared时,返回int值: 取值 <0 或 >=0 ,这里暂时当成bool来理解.
+
+          AQS的tryAcquire调用了两次 tryAcquire .
+                在第二次调用tryAcquire时尝试唤醒后继线程
+                release()唤醒后继线程
+          一个线程拿到state后，后续线程首先进入队列等待, 在第二次调用tryAcquire时尝试唤醒后继线程.
+          结果：可能有多个线程占有state.
+
+    总结: 独占和共享 模式一个区别在于 第二次调用 tryAcquire、tryAcquireShared 时 是否唤醒了后继节点.
+          独占 : 第2次调用时没有唤醒,只有release才能唤醒后继节点.
+          共享 : 第2次调用时尝试唤醒,release也能唤醒后继节点.
+
+AQS：
+    int tryAquireShared(int) : AQS子类来实现，共享式的获取state. 忽略线程中断。
+    boolean tryReleaseShared(int) : AQS子类来实现,共享式的释放state.
+
+    void acquireShared(int arg) ：给同步工具调用
+    boolean releaseShared(int arg) ：给同步工具调用
+
+    源码分析：
+    public final void acquireShared(int arg) {
+        // switch(tryAcquireShared(arg)){
+                case >=0 :
+                        共享成功
+                        break
+                case <0 :
+                        添加到队尾
+                        若(前节点是头节点 && >=0 ) 则 试图唤醒后继节点 ，否则阻塞
+            }
+
+        if (tryAcquireShared(arg) < 0)
+            doAcquireShared(arg);
+    }
+
+    private void doAcquireShared(int arg) {
+        final Node node = addWaiter(Node.SHARED);   // 创建Node,线程安全的添加到队尾。 node就是尾节点喽。
+        boolean failed = true;
+        try {
+            boolean interrupted = false;
+            for (;;) {
+                final Node p = node.predecessor();      // node:当前节点就是尾节点   p:当前节点的前节点。
+
+                if (p == head) {
+
+                    int r = tryAcquireShared(arg);      // TODO( tryAcquireShared的返回值 就像一个开关。)
+
+                    if (r >= 0) {                       // TODO( Success 条件： 前节点是头节点 && tryAcquireShared返回值 >= 0 )
+
+                        setHeadAndPropagate(node, r)    // 将尾节点 设置为头节点，并试图 唤醒头节点的后继节点。
+                        p.next = null;                  // 前节点就出队 : 断开前节点next引用 .  help GC
+                        if (interrupted)
+                            selfInterrupt();
+                        failed = false;
+                        return;
+                    }
+                }
+
+                // switch(前节点P.waitStatus){
+                     SIGNAL :    //值为-1
+                         阻塞当前线程, 当前线程就是 node节点里的线程喽。
+                         interrupted = true
+                         return true
+                     CANCELLED :  //值为1 ：  waitStatus>0 不就是 waitStatus==1
+                         就删除P节点: 效果看图
+                         break
+                     defalut:    // 0、-2、-3
+                         更新前节点P ：waitStatus = SIGNAL
+                         // TODO(由此可见， 获取state成功即正在运行的线程 的waitStatus 的值，是被当前线程修改为SIGNAL状态的。)
+                         // TODO(由于是死循环，第一次循环：修改为SIGNAL状态 。第二次循环： 检测到前节点P.waitStatus 为SIGNAL，当前线程就阻塞了。 )
+                         break
+                     }
+                  // TODO( Failed 结果： 当前线程 被阻塞 )
+                if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt()) // 前节点不是头节点，就阻塞。
+                    interrupted = true;
+            }
+        } finally {
+            if (failed)
+                cancelAcquire(node);
+        }
+    }
+        // 将尾节点 设置为头节点，并试图 唤醒头节点的后继节点。
+        setHeadAndPropagate(node, propagate) {
+             Node h = head;
+             setHead(node);         // 将尾节点设置为头节点
+
+             // 五个条件命中一个则去唤醒后继节点
+             // propagate > 0 ：         tryAcquiredShared 返回值 > 0
+             // h == null     ：         头节点为空
+             // h.waitStatus < 0 :       头节点的状态不为 CANCELED
+             // (h = head) == null ：    头节点为空
+             // h.waitStatus < 0 :       头节点的状态不为 CANCELED
+
+             if (propagate > 0 || h == null || h.waitStatus < 0 ||
+                 (h = head) == null || h.waitStatus < 0) {
+
+                 Node s = node.next;    // 拿到头节点的后继节点 。（注意 此时node 是头节点了）
+
+                 // 在分析独占模式时，了解到 这个队列(双链表)的连接只用了前驱指针，只有有节点被删除时，后继指针才用来连接 被删除节点的下一个节点。
+
+                 // s == null  true: 表示没有节点被删除 。 false: 队列中有节点被删除
+                 // s.isShared() 那s就为null喽，才能命中这个判断。
+                 if (s == null || s.isShared())     //  如果后继节点时共享模式，则唤醒
+
+                 TODO(唤醒头节点 的后继节点(中的线程) ，并设置 头节点的状态为 PROPAGATE)
+                 doReleaseShared();
+             }
+        }
+
+
+    ---------------------------------------------------------------------------------------------
+
+    public final boolean releaseShared(int arg) {
+        if (tryReleaseShared(arg)) {
+            doReleaseShared();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Release action for shared mode ：
+     * 唤醒头节点 的后继节点(中的线程) ，并设置 头节点的状态为 PROPAGATE
+     */
+    private void doReleaseShared() {
+
+        for (;;) {
+            Node h = head;
+            if (h != null && h != tail) {   // 头节点不空
+                int ws = h.waitStatus;
+
+              //switch(ws){
+                    case SIGNAL && CAS为0失败:
+                        continue                重新循环
+                    case SIGNAL && CAS为0成功:
+                        unparkSuccessor(h)      唤醒h节点 的后继节点。
+                    case 0 && CAS为PROPAGATE失败
+                         continue               重新循环
+                }
+
+                if (ws == Node.SIGNAL) {
+                    if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
+                        continue;            // loop to recheck cases
+                    unparkSuccessor(h);
+                }
+                else if (ws == 0 &&
+                         !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
+                    continue;                // loop on failed CAS
+
+
+            }
+            TODO(头节点的状态最终为 PROPAGATE )
+            if (h == head)                   // 只要能通过以上的逻辑判断，就结束死循环。
+                break;
+        }
+    }
