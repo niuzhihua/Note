@@ -1,0 +1,38 @@
+    Condition是依赖Lock对象的
+    Condition必须通过Lock的newCondition()方法
+
+    Condition使用示例：
+        Lock lock = new ReentrantLock();
+        Condition condition = lock.newCondition();
+        public void conditionWait() throws InterruptedException {
+            lock.lock();
+            try {
+
+                //1、当前线程被构造成Node,并加入等待队列中。          (addConditionWaiter)
+                //2、释放同步状态state ，并唤醒同步队列中的后继节点。  (fullyRelease)
+                //3、当前线程会释放锁并在此等待. (调用LockSupport.park阻塞了)
+                //4、被唤醒后继续 竞争获取同步状态state
+                //5、获取同步状态state成功后，await方法返回，占有同步器成功. TODO(对于锁这种同步器而言，该线程已经获取了锁)
+                condition.await()
+
+                TODO( 如何理解调用await()相当于从同步队列中删除当前node ? )
+                    1、调用await()后唤醒了后继节点，后继节点会设置自己为头节点，这样不就从同步队列中删除了么。
+                    2、构造了新的Node 加入了等待队列。
+
+            } finally {
+                lock.unlock();
+            }
+        }
+        public void conditionSignal() throws InterruptedException {
+            lock.lock();
+            try {
+               //1、遍历等待队列，将遍历过的node从队列中删除，直到命中一个没有取消的node。(这个node就是 await()方法添加到等待队列的node)
+               //2、将命中的node 添加到同步队列, 等待被前节点唤醒。
+                condition.signal() //
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        在Object的监视器模型(synchronized/wait()、notify())上，一个锁 拥有一个同步队列和一个等待队列。
+        而并发包中， 一个锁(Lock)拥有一个同步队列和多个等待队列

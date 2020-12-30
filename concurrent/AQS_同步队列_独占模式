@@ -122,7 +122,7 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                 }
             }
 
-            // 线程安全的将 node 节点 添加到队尾。
+            // 线程安全的将 node 节点 添加到同步队列的 队尾。
             //enq(node){
                 for (;;) {
                     if(tail == null){ // 线程安全的初始化 head指向、tail指向。命中表示： tail = head = new Node()
@@ -174,11 +174,12 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
                 }
             }
 
-
+            TODO(核心点2：加入到 获取 同步状态state 的竞争中 )
             // for (;;) {
                    不停的判断 当前节点的前节点 是否为 头节点.
                    if(当前节点的前节点是头节点){
                         if(调用tryAcquire获取状态成功){
+                            将当前节点设为 头节点
                             return 当前线程的中断状态
                         }
                    }else{
@@ -192,14 +193,14 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
 
                    }
              }
-
-             TODO(核心点2：)
              /**
               * @param node : 获取状态失败的线程所在node. 即新创建的node,也是tail(指向尾节点)。
               * 经过上面分析，addWaiter方法指向过后，  node.next指向自己。 node.pre指向前节点
               *     前节点 <-pre. node .next-> Self
+              * return true : 竞争state失败，阻塞。线程等待时被中断了。
+              *        false: 竞争state成功。
               /
-            //acquireQueued(node, arg) { // (和acquire方法一样都是) 给条件等待方法(condition wait methods) 来使用。
+            //acquireQueued(node, arg) {
                 boolean failed = true;
                 try{
                        boolean interrupted = false;
@@ -292,10 +293,10 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
     ----------------------------------------------------------------------------------------------
     release方法 ：
         /**
-         *  用来 唤醒 一个或多个线程。
+         *  唤醒 同步队列中 头节点的下一个节点/线程。
          *  tryRelease ： 和tryAcquire一样， 由子类来实现。Release(释放)本质上就是线程安全的更新了state的值。
          *
-         * return true : 处于独占状态的线程解除了独占状态 。 false: 解除独占状态失败。
+         *  return true : 处于独占状态的线程解除了独占状态 。 false: 解除独占状态失败。
          */
         public final boolean release(int arg) {
             // 如果释放成功, 返回true
@@ -311,7 +312,8 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
         }
 
         /**
-         * @param node : 头节点
+         * 唤醒头节点的下一个节点/线程。
+         * @param node : 独占模式下 node是头节点 。(node是同步队列的节点)
          */
         private void unparkSuccessor(Node node) {
 
@@ -319,7 +321,7 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
             if (ws < 0)  compareAndSetWaitStatus(node, ws, 0)  // waitStatus 为负数就 设为0
 
             // 根据入队的情况来看，虽然Node节点中有 pre、next 。但是 只用了pre来链接整个链表。
-            //  所以 同步队列其实是一个单链表。 那 头节点.next 则为null.
+            // 当有节点被删除时，next才会指向下一个节点，否则指向自己。
             Node s = node.next
 
             if (s == null || s.waitStatus > 0) {

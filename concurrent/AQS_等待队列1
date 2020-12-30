@@ -1,0 +1,231 @@
+
+    Condition接口：提供了类似Object的监视器方法(wait()、wait(long timeout)、notify()、notifyAll())，
+    与Lock配合可以实现等待/通知模式。
+
+    Condition接口提供的方法：
+        void await() throws InterruptedException    // 等待方法
+        void awaitUninterruptibly()
+        void signal()               // 唤醒方法
+        void signalAll()
+
+
+    Condition接口的实现： public class ConditionObject implements Condition
+                        由单链表实现的 等待队列。(wait queue) ,每个Condition对象就是一个队列。
+
+    /**
+     * TODO(将线程/node 放入等待队列 ,借助LockSupport工具将线程阻塞，并在被唤醒后处理中断逻辑。)
+     *
+     */
+    public final void await() throws InterruptedException {
+        //如果当前线程是中断状态，则抛出中断异常。
+        if (Thread.interrupted())
+            throw new InterruptedException();
+
+        // 将当前线程封装进Node ,并添加到等待队列 尾部。
+        Node node = addConditionWaiter();   // node：尾节点
+
+        // 调用release方法释放当前线程的 state。
+        失败：抛出异常
+        成功：将尾节点的waitStatus状态变为canceled.
+        int savedState = fullyRelease(node);    // savedState :当前线程的state
+
+        int interruptMode = 0;  // 0 表示线程没有中断
+
+        // 如果当前节点不在同步队列中
+        while (!isOnSyncQueue(node)) {
+            TODO(阻塞当前线程 , 后面代码不执行了,除非唤醒.)
+            LockSupport.park(this);
+
+            TODO( 1、node/线程被唤醒后 中断则命中break,否则结束while)
+
+            // if( Thread.interrupted() ){  // 如果线程醒来后中断了，命中break.
+                // 添加到同步队列成功：THROW_IE
+                // 失败：REINTERRUPT
+                interruptMode = transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT
+            }else{
+                // 醒来后没有中断 ,不会命中break,接着睡。
+                interruptMode = 0
+            }
+            if(interruptMode!= 0){
+                break
+            }
+            // checkInterruptWhileWaiting： 线程醒来后有没有中断。
+            // 中断了：THROW_IE 或REINTERRUPT  没有中断：0
+            if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
+                break;
+        }
+
+
+        // 当前节点必在同步队列中吗？
+             是的，因为调用signal时，将node从等待队列中移到了 同步队列中。
+        // 条件1：acquireQueued：当前节点试图设为头节点，否则就阻塞当前线程。
+        // 条件2： 线程的中断状态 不为 THROW_IE。
+        // 满足1、2 则将 中断状态设为 REINTERRUPT
+
+         TODO( 2、node被唤醒后 竞争获取 同步状态state )
+        if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
+            interruptMode = REINTERRUPT;
+
+        TODO( 3、刷新等待队列 和处理中断逻辑。)
+
+        // 刷新等待队列 ( 如果又有节点 添加到了等待队列 )。
+        if (node.nextWaiter != null)
+            // 删除 等待队列中所有状态不为 CONDITION 的Node
+            unlinkCancelledWaiters();
+
+        // 处理线程的 中断逻辑interruptMode.
+        // switch(中断状态interruptMode){
+                case THROW_IE :
+                    throw new InterruptedException()
+                    break
+                case REINTERRUPT：
+                    调用线程中断
+                    Thread.currentThread().interrupt()
+                    break
+        }
+        if (interruptMode != 0)
+            reportInterruptAfterWait(interruptMode);
+    }
+    ----------------------------------唤醒：signal()-------------------------------------------
+    // TODO(1、若等待队列不为空，则依次从等待队列中取出(删除)node,直到命中一个没有取消的node(大概率头节点)
+            2、同时将node 加入同步队列 等着被唤醒。)
+
+    public final void signal() {
+        if (!isHeldExclusively())  // 如果当前同步器 没有 被当前线程独占 ，则抛出异常。
+            throw new IllegalMonitorStateException();
+        Node first = firstWaiter;
+        if (first != null)  //等待队列不为空
+            doSignal(first);
+    }
+    /**
+     * 从头节点遍历等待队列，将遍历过的node从队列中删除，直到命中一个没有取消的node.
+     * TODO(即：从等待队列头部取出一个没有取消的node，并添加到同步队列。 )
+     *  @param first : 等待队列中的第一个节点。
+     */
+    private void doSignal(Node first) {
+         do {
+             if ( (firstWaiter = first.nextWaiter) == null) // 定位到下一个节点，如果下一个节点为空，尾指针指向空，(即 头指针向后移，尾指针向前移 )。
+                 lastWaiter = null;
+
+             first.nextWaiter = null;                       // first节点的后继指针断开(指向空)。(删除first节点)。
+
+        // 由于是&&关系，transferForSignal 返回true，则结束遍历。
+         } while (!transferForSignal(first) && (first = firstWaiter) != null ); // firstWaiter已经是下一个节点啦
+    }
+
+    /**
+     *  将node 状态更新为0。 (0意味着没意义  非0意味着有意义)
+     *  true ： 更新为0成功.
+
+                1、同时将node 加入同步队列。
+                2、更新node状态为 SIGNAL ，失败则唤醒 node 。
+
+                (如果node/线程取消了，则唤醒，如果更新node状态为SIGNAL失败了，则唤醒。否则更新为SIGNAL成功。
+                总结：要么node/线程被唤醒了，要么就是状态改为了 SIGNAL。)
+     *  false  ： 更新为0失败.
+     */
+    final boolean transferForSignal(Node node) {
+          /*
+           * (将node节点的waitStatus 由CONDITION 改为 0 .若失败 ，即cannot change waitStatus ，则表示此node已经cancelled了。)
+           * 如果不能改变node的状态 为0失败 。return false
+           * 如果 将node节点的waitStatus更新为 0 成功 ，return true
+           */
+          if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
+              return false;
+
+          /*
+           * Splice onto queue and try to set waitStatus of predecessor to
+           * indicate that thread is (probably) waiting. If cancelled or
+           * attempt to set waitStatus fails, wake up to resync (in which
+           * case the waitStatus can be transiently and harmlessly wrong).
+           */
+          TODO(将node 加入同步队列。(当然是队尾喽) )
+          Node p = enq(node);
+
+          int ws = p.waitStatus;  //. ( waitStatus > 0 取值就是1，而1表示canceled )
+
+          //   执行到这里，ws 为0
+          // 1、如果线程/node 被取消了，则唤醒。
+          // 2、 compareAndSetWaitStatus 更新 node的waitStatus的值为SIGNAL
+                    成功true:  没有命中唤醒方法unpark，反正已经加入了同步队列，没有唤醒也无所谓，等待前节点唤醒本节点就行了。
+                    失败false: 命中唤醒方法unpark ，反正已经加入了同步队列队尾，没有被设为 SIGNAL状态也无所谓。
+                                因为SIGNAL状态是为了唤醒后继节点的。这时已经没意义了。
+
+                    注：为了简单，这里就理解为 compareAndSetWaitStatus 更新成功，没有命中唤醒方法unpark。
+
+          if (ws > 0 || !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
+              LockSupport.unpark(node.thread);
+
+          // node的waitStatus不为 canceled . 即线程/node没有被取消。
+          return true;
+    }
+    -------------------------------------------------------------------------
+    /**
+     *  将中断的线程/node 添加到同步队列中 .
+     *  true : 成功添加     false:添加失败，再次判断如果不在同步队列中，则当前线程让出cpu执行权。
+     * @param node  此时的线程/node 已经被中断(interrupted 为 true)了。
+     */
+    final boolean transferAfterCancelledWait(Node node) {
+        // 如果将 node的waitStatus状态 由CONDITION改为0  成功， 则将node 加入同步队列。
+        if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
+            enq(node);
+            return true;
+        }
+
+         // 如果 node没有在同步队列中，则让出cpu执行权。
+        while (!isOnSyncQueue(node))  Thread.yield();
+
+        return false;
+    }
+    /**
+     *  将当前线程 添加到等待队列的 队尾。
+     */
+    private Node addConditionWaiter() {
+        Node t = lastWaiter;
+        // 如果等待队列中最后一个节点的状态为 cancelled 。 则刷新一次等待队列,clean out 所有cancelled node.
+        if (t != null && t.waitStatus != Node.CONDITION) {
+            // 删除 等待队列中所有状态不为 CONDITION 的Node
+            unlinkCancelledWaiters();
+            t = lastWaiter;
+        }
+        // 创建新节点
+        Node node = new Node(Thread.currentThread(), Node.CONDITION);
+
+        // 添加到队尾
+        if (t == null)
+            firstWaiter = node;
+        else
+            t.nextWaiter = node;
+
+        // 尾节点指针指向队尾节点
+        lastWaiter = node;
+        // 返回新添加的节点.即队尾节点。
+        return node;
+    }
+
+    /**
+     * 调用node节点的 release 方法， 这个方法在分析独占模式时介绍过了。
+     *
+     * @param node :尾节点
+     */
+    final int fullyRelease(Node node) {
+        boolean failed = true;
+        try {
+            // 获取当前线程/Node 的 state状态.
+            int savedState = getState();
+            // 释放当前线程的state .(唤醒同步队列中头节点后面的 线程/节点)
+            if (release(savedState)) {
+                failed = false;
+                return savedState;
+            } else {
+
+                    // 释放失败抛出异常
+                throw new IllegalMonitorStateException();
+            }
+        } finally {
+            // 释放state失败，则命中。并将 等待队列中的 node 状态改为 CANCELLED。
+            if (failed)
+                node.waitStatus = Node.CANCELLED;
+        }
+    }
+    -------------------------------------------------------------------------------
