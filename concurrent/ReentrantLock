@@ -1,0 +1,88 @@
+
+    互斥锁(独占锁)的特性：同步队列中只能有一个线程在运行。
+    锁的操作有：加锁、解锁  或者叫 获取锁、释放锁。
+
+        需要线程安全的维护state. 取值只有两种：0和1。
+        对应到state， state = 1 表示当前线程获取到了锁。state = 0 表示释放了锁。
+
+    实现：tryAcquire 和 tryRelease 是互斥性的维护着state。
+          互斥算法：
+              state = 0  默认值，可以用来表示 已解锁
+              state = state + X ：获取锁
+              state = state - X ：释放锁
+
+---------------------------------------------------------------------------------------------------
+    /**
+     *  加锁实现：
+     *
+        1、state 由 0 赋值为 1 ，获得锁成功。设置当前线程为独占线程。
+        2、已经是独占线程，确认state的值是否为1。 是则 获得锁成功
+     */
+    final boolean nonfairTryAcquire(int acquires) {  // acquires = 1
+            final Thread current = Thread.currentThread();
+            int c = getState();
+            if (c == 0) {
+                // 这里会有多个线程 获取state ,因此需要 线程安全的 获取(修改)state .
+                if (compareAndSetState(0, acquires)) {
+                    // 设置当前线程 在同步队列中是 独占state的。
+                    setExclusiveOwnerThread(current);
+                    // true表示 独占state成功
+                    return true;
+                }
+            }
+            else if (current == getExclusiveOwnerThread()) {  // 命中表示已经获取state成功，这也是可重入锁的实现，自己和自己不会互斥。
+                int nextc = c + acquires;
+                if (nextc < 0) // overflow
+                    throw new Error("Maximum lock count exceeded");
+
+                // 这里 nextc > 0 ,必为 1
+                setState(nextc);
+                return true;
+            }
+            return false;
+    }
+---------------------------------------------------------------------------------------------------
+            //
+           protected final boolean tryAcquire(int acquires) {
+                final Thread current = Thread.currentThread();
+                int c = getState();
+                if (c == 0) {
+                    if (!hasQueuedPredecessors() &&
+                        compareAndSetState(0, acquires)) {
+                        setExclusiveOwnerThread(current);
+                        return true;
+                    }
+                }
+                else if (current == getExclusiveOwnerThread()) {
+                    int nextc = c + acquires;
+                    if (nextc < 0)
+                        throw new Error("Maximum lock count exceeded");
+                    setState(nextc);
+                    return true;
+                }
+                return false;
+            }
+---------------------------------------------------------------------------------------------------
+    /**
+     *  解锁实现：
+     *       1、state 由 1 赋值为 0 ，释放锁成功。
+     *
+     */
+    protected final boolean tryRelease(int releases) {  // acquires = 1
+        // 互斥算法
+        int c = getState() - releases;
+
+        // 检测当前线程
+        if (Thread.currentThread() != getExclusiveOwnerThread())
+            throw new IllegalMonitorStateException();
+
+        boolean free = false;
+        // 检测值
+        if (c == 0) {
+            free = true;
+            setExclusiveOwnerThread(null);
+        }
+         // 设置值：state 由 1 赋值为 0
+        setState(c);
+        return free;
+    }

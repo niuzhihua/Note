@@ -1,0 +1,38 @@
+一、
+    线程基础
+    线程安全基础
+    happen-before规则理解
+    递归队列
+二、
+    双向链表
+    AQS ： 源码阅读、理解
+    同步工具熟悉：
+        Lock:
+        Latch:
+        Semaphore:
+        CyclicBarrier:
+        Exchanger:
+        FutureTask :
+
+    尝试编写一个自定义同步工具
+    尝试编写阻塞队列
+
+二、原子变量
+    并发队列
+        源码阅读：ConcurrentLinkedQueue
+三、线程池
+        源码阅读
+        编写案例
+    生产者消费者模式
+        理解
+        编写案例
+
+四、性能
+    死锁
+    饥饿
+
+五、其他多线程模式
+    Fork/Join
+    ThreadLocal
+        源码阅读
+        编写案例

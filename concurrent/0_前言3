@@ -1,0 +1,26 @@
+http://gee.cs.oswego.edu/dl/jmm/cookbook.html
+1、JMM主要由一些规则组成，这些规则不允许对访问字段和监视器的某些指令进行重新排序
+
+Volatiles and Monitors
+Final Fields
+
+
+2、Memory Barriers 分类：
+编译器和处理器都必须遵守编译器规则，在单处理器中，不需要特别的努力来确保 (程序执行的)正确顺序，但是在多处理器下，
+要保持正确定的顺序，即一致性，需要使用屏障指令。内存屏障不是同步障碍
+    内存屏障指令仅直接控制CPU与其缓存的交互。最终目的：所有处理器之间可见，并且在可见时加载检索它们。
+
+    加载指令：load ,访问数据
+    存储指令：store
+
+    LoadLoad ： Load1; LoadLoad; Load2
+                保证在 [load2的数据被访问] 之前，load1的数据 和 所有后续的加载指令被加载。
+
+    StoreStore ：Store1; StoreStore; Store2
+                确保在 数据和 [Store2、所有后续存储指令]相关联 之前，Store1的数据对其他处理器可见（即刷新到内存）
+
+    LoadStore： Load1; LoadStore; Store2
+                确保在 [加载与Store2关联的所有数据]之前， Load1的数据被[加载] 和 后续存储指令被[刷新]
+
+    StoreLoad： Store1; StoreLoad; Load2
+                确保 数据被load2访问之前，Store1的数据对其他处理器可见 ，并且后续的加载指令 被加载

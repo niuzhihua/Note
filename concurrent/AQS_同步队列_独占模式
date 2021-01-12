@@ -50,6 +50,9 @@ AQS：队列同步器 ：用来构建锁或者其他同步器的 基础核心组
 
         acquireInterruptibly TODO
 
+        void setExclusiveOwnerThread(Thread thread) // 设置thread为独占state的线程
+        Thread getExclusiveOwnerThread()            // 获取当前独占state的线程
+
         boolean isHeldExclusively() :  当前同步器(AQS子类对象)是否被线程独占。  true: 是
         getQueuedThreads()  :   查询队列中线程数量
         getExclusiveQueuedThreads() ：
