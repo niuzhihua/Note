@@ -21,8 +21,19 @@
     并发队列
         源码阅读：ConcurrentLinkedQueue
 三、线程池
+
+        JDK提供的线程池参数含义、使用、线程工厂、构造后再定制ThreadPoolExecutor
+        定制线程池大小
+        饱和策略
+        扩展/监控 ThreadPoolExecutor
+        将顺序执行改为并行执行
         源码阅读
-        编写案例
+
+
+
+
+
+
     生产者消费者模式
         理解
         编写案例

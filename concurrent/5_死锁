@@ -1,0 +1,44 @@
+
+    顺序死锁1：两个/多个 线程试图通过[不同的顺序] 获得 [相同] 的锁。
+              如果请求锁的顺序相同，就不会产生锁依赖现象，也就不会死锁了。
+
+            如果所有线程以固定的顺序获得锁，就不会发生顺序死锁了。
+            例如有两个锁 A、B,如果能够保证 请求锁A、锁B的线程 都是一样的顺序，比如 A->B,那么就不会发生死锁。
+
+                // 以下两个方法以不同的顺序获得锁。 分别是 left->right 、right->left
+
+                public void left2Right() {
+                    synchronized (left) {
+                        synchronized (right) {
+                            doSomeThing();
+                        }
+                    }
+                }
+
+                public void right2Left() {
+                    synchronized (right) {
+                        synchronized (left) {
+                            doSomeThing();
+                        }
+                    }
+                }
+
+    顺序死锁2: 两个/多个 线程试图通过[相同的顺序] 获得 [相同] 的锁。但是锁是动态的，比如锁是靠方法参数传递进来的，
+            而实参的传递不受我们控制，因此运行时还是会以不同的顺序获得锁。
+
+            // 虽然是以相同的顺序获得锁，但是锁动态传递进来的，所以运行时还是会以不同的顺序获得锁。
+
+            public void transferMoney(Object left, Object right) {
+                    synchronized (left) {
+                        try {
+                            Thread.sleep(1500);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        System.out.println("获取了锁" + left + " ,等待锁" + right + "....");
+                        synchronized (right) {
+                            doSomeThing();
+                        }
+                    }
+                }
+

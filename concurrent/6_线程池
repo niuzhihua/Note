@@ -1,0 +1,260 @@
+1、为什么要用线程池？
+    简化线程生命周期的管理，可以使得任务的提交和执行之间解耦。
+    增加线程可以提高系统的吞吐量，但是线程数超出范围则导致应用性能编程，甚至崩溃。
+
+    无限制的创建线程的缺点：
+        1、线程的创建耗时，导致处理任务/请求延迟 ，响应性降低 。
+        2、内存升高：如果线程数量多余处理器数量，则线程将会空闲，空闲的线程也占内存，导致内存升高。
+        3、并且给垃圾回收器带来压力，大量线程在竞争cpu资源时，带来额外的性能开销。
+
+        因此，如果已经有足够多的线程使得CPU忙碌，那么创建再多的线程是百害无一利的。
+
+
+2、线程池使用场景？
+
+    TODO(任务之间的依赖性，如果任务都是独立的，就正合适使用线程池。 例如可以将顺序执行的递归、循环 转为并行执行. )
+
+    如果提交的任务之间有依赖性，除非线程池是无线的，否则有死锁的风险。
+
+    如果任务依赖与其他任务，这就给线程池的执行带来了约束，这样就需要管理执行策略。
+    在线程池中，不应该用ThreadLocal传递任务间的数值。
+    如果将耗时的任务与短期的任务混合在一起，除非线程池很大，否则有“堵车”的风险。
+
+
+3、线程池发生饥饿死锁
+    对于一个单线程化的Executor , 其中的一个任务将另一个任务提交到相同的Executor ，
+    并等待这个新任务的结果，这就会引发 饥饿死锁。
+    TODO(例子)
+
+4、定制线程池大小
+
+    线程池的长度取决与未来提交的任务类型 和 所在的 系统环境。因此线程池长度应该动态的设置。
+    比如：利用Runtime.availableProcessors计算
+    定制线程池的长度要避免 过大或过小 这2种极端情况
+        过大：由于对cpu和内存资源的竞争，导致内存升高
+        过小：cpu和内存得不到高效利用，降低了处理任务的吞吐率。
+
+    对于cpu密集型的任务： 为了更好的cpu利用率
+            线程池长度 = 系统中cpu的数量N  +  1
+    IO密集型或阻塞操作多的任务 ： 需要估算出 任务花在等待的时间 和 任务花在计算的时间 的比率，这时一个估算的值，不用太精确。
+            比率 W/C = 用于等待的时间W / 用于计算的时间C
+            线程池长度 = cpu的数量N * cpu利用率U * ( 1+W/C )
+
+5、TODO(线程池参数配置, 即线程池执行策略 的配置.)
+
+    1:一般通过构造参数来设置线程池参数,也可以构造完成后 通过set方法 再次设置.
+    2:如果是通过Executors创建的线程池 :  ( 单线程的线程池除外 newSingleThreadExecutor() )
+        newCachedThreadPool() , newFixedThreadPool(int nThreads) , newScheduledThreadPool(int corePoolSize)
+        则可以这样重新配置参数:
+        ExecutorService exec = Executors.newCachedThreadPool();
+        if (exec instanceof ThreadPoolExecutor)
+            ((ThreadPoolExecutor) exec).setCorePoolSize(10);
+        else
+        throw new AssertionError("Oops, bad assumption");
+
+     TODO(如果以1、2的方式配置线程池,那么执行策略是可以修改的 .)
+     3: 不想 执行策略被修改 的配置:
+
+         newSingleThreadExecutor() 返回的是经过一个包装类,而不是ThreadPoolExecutor ,所以 这种创建线程池的方式不能修改其执行策略.
+         可以利用unconfigurableExecutorService 方法 来防止执行策略被修改.
+
+             ExecutorService exec = Executors.newCachedThreadPool();
+             ExecutorService wrapper = Executors.unconfigurableExecutorService(exec);
+
+
+5.1、线程池参数含义：
+
+    public ThreadPoolExecutor(int corePoolSize,                 //线程池中核心池的大小 ：核心线程
+                              int maximumPoolSize,              //线程池中 线程数的上限
+                              long keepAliveTime,               //线程数量 > corePoolSize时，空闲的线程等待处理新任务的时间。即非核心线程等待处理新任务的时间
+                              TimeUnit unit,
+                              BlockingQueue<Runnable> workQueue,
+                              ThreadFactory threadFactory,
+                              RejectedExecutionHandler handler)
+
+    Tips:
+    当ThreadPoolExecutor被创建出来时，核心线程不是立即创建，而是有新任务提交后，除非调用prestartAllCoreThreads()
+    如果一个非核心线程的空闲时间超过 keepAliveTime ， 这时如果 核心池满了，则这个非核心线程会结束， 没满则作为候选线程等待加入核心池。
+    通过设置 corePoolSize 和 keepAliveTime ，可以使得线程池归还 空闲的非核心线程
+
+    /**
+     *  定长的线程池：设置了核心池大小 和 线程池大小
+     *  创建的是固定大小的线程池。 当核心池满时，再添加任务则将等待，直到有可用的线程。
+     *  如果一个线程在 线程池shutdown前运行失败结束了，则会有新的线程取代它(如果有新任务的话)。
+     *  线程池里面的线程会一个存在，直到线程池shutdown .
+     */
+    public static ExecutorService newFixedThreadPool(int nThreads, ThreadFactory threadFactory) {
+         return new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS,new LinkedBlockingQueue<Runnable>(),threadFactory);
+    }
+
+
+    /**
+     *  创建的是无限扩大的线程池,这样的话 任务变少，线程池中线程的数量 就会变少。因为多余的线程会被回收。
+     *
+     *  核心池大小 : 0
+     *  线程池大小:Integer.MAX_VALUE
+     *  keepAliveTime : 一分钟
+     */
+    public static ExecutorService newCachedThreadPool() {
+        return new ThreadPoolExecutor(0,Integer.MAX_VALUE,60L, TimeUnit.SECONDS,new SynchronousQueue<Runnable>());
+    }
+
+    /**
+     *  在线程池shutdown之前，池中只有一个线程在工作, 如果这个线程 由于运行异常结束了，则会有新的线程来取代 。
+     *
+     *  推测： 这样可以实现一个永远不挂掉的线程。
+     */
+    public static ExecutorService newSingleThreadExecutor() {
+        return new FinalizableDelegatedExecutorService(new ThreadPoolExecutor(1, 1,0L, TimeUnit.MILLISECONDS,new LinkedBlockingQueue<Runnable>()));
+    }
+
+6、线程池中 [ 任务队列 ] 的管理
+
+    了解了无限制的创建线程带来的缺点后，很容想到采用 [ 定长的线程池 ] 方案。 但是这个方案并不是很完美，因为虽然解决了问题，
+    但是在高负载下，仍然有可能耗尽资源，只不过更难了。多出来的请求/任务 会在Runnable队列中排队等待。
+
+    TODO(采用定长的线程池思考： 如果请求的生产速度过快，超过了处理速度，仍然有耗尽资源的风险 ， 这就需要进一步优化 。)
+
+    ThreadPoolExecutor 可以设置一个BlockingQueue来存放等待执行的任务。有三种 等待策略。
+
+        1、任务队列是无线队列 ： newFixedThreadPool、newSingleThreadExecutor 默认使用无线队列 LinkedBlockingQueue
+                     如果工作线程处于忙碌状态，则任务在任务队列中等待。
+                     如果任务持续的一直增加，并且超过了消费的速度，则任务队列会一直增长。
+
+        2、任务队列是有限队列 : ArrayBlockingQueue 、有限的LinkedBlockingQueue、有限的PriorityBlockingQueue
+                     TODO(如果有限队列满了怎么办？使用饱和策略处理)
+                     饱和策略：
+                        AbortPolicy ： 默认的， 有限队列满了，再添加任务则 抛出RejectedExecutionException, 我们可以捕获这个异常，处理自己的业务。
+                        CallerRunsPolicy ：有限队列满后，既不会舍弃任务，也不会抛出异常。新添加的任务直接在调用者线程执行。而不是在线程池中执行。
+                                           在调用者线程执行: 直接调用 runnable.run()
+                        DiscardPolicy ：有限队列满时，再添加任务则 忽略/遗弃 。
+                        DiscardOldestPolicy：
+
+
+
+
+        3、同步移交 ：对于容量无限或者很大的 线程池，可以使用同步移交 方式。SynchronousQueue是一种机制，而不是队列这种数据结构。
+                      将一个任务放入SynchronousQueue中，必须有线程等待着接收，否则就会创建新的线程。
+
+                      TODO(当 线程池的容量无限大( 或者很大时 )，或者 任务是可以被拒绝的 ，满足任一情况即可使用这样的方式)
+                      例如 线程池 newCachedThreadPool 就采用了SynchronousQueue。
+
+        如何控制任务执行的顺序？
+        如果使用LinkedBlockingQueue、ArrayBlockingQueue 等先进先出的队列，则任务会按照FIFO方式别执行。
+        我们可以采用优先级队列(PriorityBlockingQueue ) 来安排任务的执行。
+
+
+        TODO(如果任务之间彼此独立，则使用 容量有限的队列 .)
+        TODO(如果任务之间有依赖关系，则使用容量很大或无限的队列 ，例如newCachedThreadPool)
+
+
+7、使用线程工厂创建线程
+
+        线程池创建线程时需要一个线程工厂来完成，默认情况下，线程工厂创建一个 新的非后台(no-daemon)的线程。
+        如果要自定义线程，就需要执行自己的线程工厂ThreadFactory。
+        TODO(自定义线程场景)：
+            在线程终止时自定义操作 ,需要为线程指明一个UncaughtExceptionHandler
+                thread.setUncaughtExceptionHandler(new ExceptionHandler());
+            监控线程执行、添加一些调试信息、打印一些日志等。
+                MyThread extents Thread{
+                    run(){
+                        sout("--------")
+                        task()
+                         sout("--------")
+                    }
+                }
+            修改线程池的优先级(不建议做)
+            给线程自定义的名称，这样有利于分辨日志来自那个线程。
+
+            Sample:
+            public class MyAppThread extends Thread {
+                public static final String DEFAULT_NAME = "MyAppThread";
+                private static volatile boolean debugLifecycle = false; // 日志等调试信息开关
+                private static final AtomicInteger created = new AtomicInteger();
+                private static final AtomicInteger alive = new AtomicInteger();
+                private static final Logger log = Logger.getAnonymousLogger();
+
+                public static int getThreadsCreated() { return created.get(); }
+                public static int getThreadsAlive() { return alive.get(); }
+                public static boolean getDebug() { return debugLifecycle; }
+                public static void setDebug(boolean b) { debugLifecycle = b; }
+                public MyAppThread(Runnable r) { this(r, DEFAULT_NAME); }
+
+                public MyAppThread(Runnable runnable, String name) {
+                    super(runnable, name + "-" + created.incrementAndGet());
+                    // 给当前线程设置终止回调.
+                    setUncaughtExceptionHandler(
+                    new Thread.UncaughtExceptionHandler() {
+                        public void uncaughtException(Thread t,Throwable e) {
+                            log.log(Level.SEVERE,"UNCAUGHT in thread " + t.getName(), e);
+                        }
+                    });
+                }
+                public void run() {
+                // 复制Fields,保证当前线程使用Fields过程中 与初始值一致. //  Copy debug flag to ensure consistent value throughout.
+                    boolean debug = debugLifecycle;
+                    if (debug) log.log(Level.FINE, "Created "+getName());
+                    try {
+                        alive.incrementAndGet();
+                        super.run();
+                    } finally {
+                        alive.decrementAndGet();
+                        if (debug) log.log(Level.FINE, "Exiting "+getName());
+                    }
+                }
+
+            }
+
+8: 线程池的监控 案例:
+
+         MyThreadPoolExecutor extends ThreadPoolExecutor {
+            //打印日志
+            private final Logger log = Logger.getLogger("TimingThreadPool");
+            //  注意用ThreadLocal来跨线程记录
+            private final ThreadLocal<Long> startTime = new ThreadLocal<Long>();
+
+            private final AtomicLong numTasks = new AtomicLong();
+            private final AtomicLong totalTime = new AtomicLong();
+
+
+             // 此方法被 线程t 在执行任务r前 来执行,
+             @Override protected void beforeExecute(Thread t, Runnable r) {
+                 super.beforeExecute(t, r);
+
+                // 记录日志
+                 log.fine(String.format("Thread %s: start %s", t, r));
+                 startTime.set(System.nanoTime());
+             }
+
+             // 不论是正常从run方法返回,还是抛出异常, 都会执行此方法 .
+             // 1:注意抛出error不会执行此方法.
+             // 2:如果beforeExecute 抛出运行时异常RuntimeException , 则任务不会被执行,afterExecute 也不会被执行.
+             @Override protected void afterExecute(Runnable r, Throwable t) {
+                 super.afterExecute(r, t);
+
+
+                 try {
+                     long endTime = System.nanoTime();
+                     long taskTime = endTime - startTime.get();
+                     numTasks.incrementAndGet();
+                     totalTime.addAndGet(taskTime);
+
+                     log.fine(String.format("Thread %s: end %s, time=%dns",t, r, taskTime));
+                 } finally {
+                    super.afterExecute(r, t);
+                 }
+             }
+
+             // 1:线程池中所有任务已经完成,并且所有线程已经终止 ,则调用此方法
+             // 2:shutdown后也调用此方法
+             @Override protected void terminated() {
+                 try {
+                     log.info(String.format("Terminated: avg time=%dns",totalTime.get() / numTasks.get()));
+                 } finally {
+                    super.terminated();
+                 }
+             }
+         };
+
+
+
