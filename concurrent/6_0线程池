@@ -68,9 +68,17 @@
                               int maximumPoolSize,              //线程池中 线程数的上限
                               long keepAliveTime,               //线程数量 > corePoolSize时，空闲的线程等待处理新任务的时间。即非核心线程等待处理新任务的时间
                               TimeUnit unit,
-                              BlockingQueue<Runnable> workQueue,
-                              ThreadFactory threadFactory,
-                              RejectedExecutionHandler handler)
+                              BlockingQueue<Runnable> workQueue, // 阻塞式的任务队列
+                              ThreadFactory threadFactory,       // 创建线程的工厂对象
+                              RejectedExecutionHandler handler)  // 任务队列为有限队列时，任务队列满后的拒绝策略，或者叫饱和策略。
+
+
+                BlockingQueue:阻塞队列
+                操作      抛出异常        返回值             阻塞式的
+                添加      add(E)          offer(E)            put(E)
+                删除      remove()        poll()              take()
+                检索      element()       peek()              --
+
 
     Tips:
     当ThreadPoolExecutor被创建出来时，核心线程不是立即创建，而是有新任务提交后，除非调用prestartAllCoreThreads()
@@ -115,14 +123,14 @@
 
     TODO(采用定长的线程池思考： 如果请求的生产速度过快，超过了处理速度，仍然有耗尽资源的风险 ， 这就需要进一步优化 。)
 
-    ThreadPoolExecutor 可以设置一个BlockingQueue来存放等待执行的任务。有三种 等待策略。
+    ThreadPoolExecutor 可以设置一个BlockingQueue来存放等待执行的任务。有三种 TODO(等待策略)
 
         1、任务队列是无线队列 ： newFixedThreadPool、newSingleThreadExecutor 默认使用无线队列 LinkedBlockingQueue
                      如果工作线程处于忙碌状态，则任务在任务队列中等待。
                      如果任务持续的一直增加，并且超过了消费的速度，则任务队列会一直增长。
 
         2、任务队列是有限队列 : ArrayBlockingQueue 、有限的LinkedBlockingQueue、有限的PriorityBlockingQueue
-                     TODO(如果有限队列满了怎么办？使用饱和策略处理)
+                     TODO(如果有限队列满了怎么办？使用 饱和策略 处理)
                      饱和策略：
                         AbortPolicy ： 默认的， 有限队列满了，再添加任务则 抛出RejectedExecutionException, 我们可以捕获这个异常，处理自己的业务。
                         CallerRunsPolicy ：有限队列满后，既不会舍弃任务，也不会抛出异常。新添加的任务直接在调用者线程执行。而不是在线程池中执行。
@@ -130,7 +138,7 @@
                         DiscardPolicy ：有限队列满时，再添加任务则 忽略/遗弃 。
                         DiscardOldestPolicy：
 
-
+                        TODO(自定义饱和策略: MyPolicy implements RejectedExecutionHandler)
 
 
         3、同步移交 ：对于容量无限或者很大的 线程池，可以使用同步移交 方式。SynchronousQueue是一种机制，而不是队列这种数据结构。
@@ -146,7 +154,6 @@
 
         TODO(如果任务之间彼此独立，则使用 容量有限的队列 .)
         TODO(如果任务之间有依赖关系，则使用容量很大或无限的队列 ，例如newCachedThreadPool)
-
 
 7、使用线程工厂创建线程
 
@@ -205,8 +212,10 @@
 
             }
 
-8: 线程池的监控 案例:
-
+8: 线程的运行时监控
+        1、使用UncaughtExceptionHandler 。
+        2、通过线程池的afterExecute来监控。
+         案例:
          MyThreadPoolExecutor extends ThreadPoolExecutor {
             //打印日志
             private final Logger log = Logger.getLogger("TimingThreadPool");
@@ -217,7 +226,8 @@
             private final AtomicLong totalTime = new AtomicLong();
 
 
-             // 此方法被 线程t 在执行任务r前 来执行,
+             // 执行在子线程：此方法被 线程t 在执行任务r前 来执行,
+             // t : 当前子线程
              @Override protected void beforeExecute(Thread t, Runnable r) {
                  super.beforeExecute(t, r);
 
@@ -226,9 +236,10 @@
                  startTime.set(System.nanoTime());
              }
 
-             // 不论是正常从run方法返回,还是抛出异常, 都会执行此方法 .
+             // 执行在子线程：不论是正常从run方法返回,还是抛出异常, 都会执行此方法 .
              // 1:注意抛出error不会执行此方法.
              // 2:如果beforeExecute 抛出运行时异常RuntimeException , 则任务不会被执行,afterExecute 也不会被执行.
+             // t:任务执行过程中抛出的异常
              @Override protected void afterExecute(Runnable r, Throwable t) {
                  super.afterExecute(r, t);
 

@@ -1,0 +1,196 @@
+ Worker extends AbstractQueuedSynchronizer implements Runnable :
+       Worker  ,是一个使得获取(aquire) 和释放(release) 锁简化的同步器, 主要用来维护正在执行任务的线程的状态。
+       TODO(Worker即是一个同步器，也是一个 Runnable )
+       用来防止中断 [意图唤醒等待任务的线程] ，而不是中断 [正在执行的任务]。这里选择一个简单的不可重入的互斥锁 ，而不选 可重入的ReentrantLock。
+       因为我们不希望工作线程 在执行线程池的方法(例如 setCorePoolSize )时 能够重新获得锁。 （另外， 线程在执行任务之前禁止中断。）
+
+
+       // 执行任务的线程
+       final Thread thread;
+       // 任务对象
+       Runnable firstTask;
+       // 每个线程的 任务计数器 。
+       volatile long completedTasks;
+
+       Worker(Runnable firstTask) {
+                  setState(-1); // inhibit interrupts until runWorker
+                  this.firstTask = firstTask;
+                  // TODO(传递当前 worker 对象 到 thread )
+                  this.thread = getThreadFactory().newThread(this);
+       }
+
+        TODO(执行任务: 在子线程中运行)
+        public void run() {
+            // 委托给 ThreadPoolExecutor的runWorker() 来执行。
+            runWorker(this);
+        }
+
+
+        /**
+         *  所有任务在这个循环中执行，TODO(要注意以下几点：)
+         *   使用锁防止了其他线程池 中断 当前线程。
+             如果执行任务前后由于发生异常，那么 此线程就会死亡， 这时线程池还是RUNNING状态的话，就会有新线程 添加到线程池。
+         *   任务执行之前会点执行 beforeExecute 方法，如果这个方法抛出异常，则任务就不执行了。 即beforeExecute发生异常会引发线程死亡。
+         *   假如beforeExecute正常执行，而任务执行过程中发生异常，则将异常传给afterExecute()方法。即任务执行也会引发线程死亡。
+         *   任务执行完成之后，afterExecute()方法会得到执行，如果发生异常，也会引发线程死亡。
+         *
+         */
+        final void runWorker(Worker w) {
+            // 当前子线程  即 w.thread
+            Thread wt = Thread.currentThread();
+            // 获取任务对象，同时删除worker中任务对象。
+            Runnable task = w.firstTask;
+            w.firstTask = null;
+
+            w.unlock(); // allow interrupts
+            boolean completedAbruptly = true;
+            try {
+                // TODO(获取任务为空则退出循环，退出循环意味着 workerExit。 即 当前线程 即将挂掉。)
+                // TODO(所以只要不退出这个循环，线程就还活着。)
+                while (task != null || (task = getTask()) != null) {
+
+                    // 上锁 : 每个子线程用的锁就是当前子线程所属的worker对象。
+                    w.lock();
+
+                    // If pool is stopping, ensure thread is interrupted;
+                    // if not, ensure thread is not interrupted.  This
+                    // requires a recheck in second case to deal with
+                    // shutdownNow race while clearing interrupt
+                    if ((runStateAtLeast(ctl.get(), STOP) || (Thread.interrupted() && runStateAtLeast(ctl.get(), STOP))) && !wt.isInterrupted())
+                            wt.interrupt();
+
+                    try {
+                        // 线程池执行任务 前 监控回调
+                        beforeExecute(wt, task);
+                        Throwable thrown = null;
+                        try {
+                            // 执行任务
+                            task.run();
+                        } catch (RuntimeException x) {
+                            thrown = x; throw x;
+                        } catch (Error x) {
+                            thrown = x; throw x;
+                        } catch (Throwable x) {
+                            thrown = x; throw new Error(x);
+                        } finally {
+                            // 线程池执行任务 后 监控回调
+                            afterExecute(task, thrown);
+                        }
+                    } finally {
+                        // 执行完任务后置为空。
+                        task = null;
+                        // 任务的计数 +1
+                        w.completedTasks++;
+                        // 解锁
+                        w.unlock();
+                    }
+                }
+                completedAbruptly = false;
+            } finally {
+                //  执行任务过程中发生异常，completedAbruptly 为 true . 这样，如果线程池 还处于RUNNING状态 , 则会添加一个worker到线程池中。
+                //  任务正常执行完，completedAbruptly 为 false.
+                processWorkerExit(w, completedAbruptly);
+            }
+        }
+
+       /************************getTask()********************************************/
+       /**
+        * 从任务队列阻塞式或定时的获取任务，如果返回null， 意味这此线程即将死亡。 命中如下任一条件将返回null :
+        *   1、worker数量(线程数量)超过maximumPoolSize ，原因是中途执行了setMaximumPoolSize方法 更改了线程池的配置。
+        *   2、线程池的状态为 STOP
+        *   3、线程池的状态为 SHUTDOWN , 并且任务队列为空。
+        *   4、worker/线程在等待获取任务时超时了。( allowCoreThreadTimeOut || workerCount > corePoolSize )
+        */
+       private Runnable getTask() {
+           // 从任务队列中获取任务时的  超时变量
+           boolean timedOut = false; // Did the last poll() time out?
+
+           for (;;) {
+               // 获取线程池的状态
+               int c = ctl.get();
+               int rs = runStateOf(c);
+
+               // 线程池的状态 >= STOP 或 任务队列为空 ，返回null.
+               if (rs >= SHUTDOWN && (rs >= STOP || workQueue.isEmpty())) {
+                   decrementWorkerCount();  // 池中的线程数量 设为 -1.
+                   return null;
+               }
+
+               // 获取线程池中运行线程的数量。
+               int wc = workerCountOf(c);
+
+               // Are workers subject to culling?
+               // boolean 定时吗 = 是否允许核心池中的线程超时  ||  核心池满了
+               boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;
+
+               // if(线程池满了 或 超时条件满足) {
+                        if(任务队列为空 || 此时至少有2个线程在运行){
+                            if(CAS_Decrement(ctl)){
+                                返回空
+                            }else{
+                                结束当次循环继续重试
+                            }
+                        }
+                  }
+               if ( (wc > maximumPoolSize || (timed && timedOut)) && (wc > 1 || workQueue.isEmpty()) ) {
+                   if (compareAndDecrementWorkerCount(c))
+                       return null;
+                   continue;
+               }
+
+               try {
+                    // 根据配置 超时或阻塞式的  获取任务
+                   Runnable r = timed ? workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) : workQueue.take();
+                   if (r != null)
+                       return r;
+                   timedOut = true;
+               } catch (InterruptedException retry) {
+                   timedOut = false;
+               }
+           }
+       }
+
+    /*****************************************************************************/
+     /**
+      * 1、统计线程池执行的任务总数量
+      * 2、如果线程是在执行任务过程中发生异常导致死亡，则再添加一个线程。
+      *
+      * w : Worker对象，封装了任务和线程。
+      * completedAbruptly :
+      *         true : 执行任务过程中发生异常，则completedAbruptly 为true.
+      *         false : 任务正常执行完了
+      */
+     private void processWorkerExit(Worker w, boolean completedAbruptly) {
+            if (completedAbruptly) // If abrupt, then workerCount wasn't adjusted
+                decrementWorkerCount();
+
+            final ReentrantLock mainLock = this.mainLock;
+            mainLock.lock();
+            try {
+                // 统计 线程w 执行的任务数量。
+                completedTaskCount += w.completedTasks;
+                // 用线程池锁 线程安全的移除 worker对象。
+                workers.remove(w);
+            } finally {
+                mainLock.unlock();
+            }
+
+            // 尝试 结束线程池运行。
+            tryTerminate();
+
+            int c = ctl.get();
+
+            if (runStateLessThan(c, STOP)) {
+                // 如果 状态小于STOP 并且 任务队列没有任务执行可执行了
+                if (!completedAbruptly) {
+                    int min = allowCoreThreadTimeOut ? 0 : corePoolSize;
+                    if (min == 0 && ! workQueue.isEmpty())
+                        min = 1;
+                    if (workerCountOf(c) >= min)
+                        return; // replacement not needed
+                }
+                // 如果 状态小于STOP 并且 任务执行前、或后、或过程中发生异常，则向线程池添加一个线程。
+                addWorker(null, false);
+            }
+        }
+

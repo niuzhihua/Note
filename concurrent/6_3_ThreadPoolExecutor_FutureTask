@@ -1,0 +1,10 @@
+FutureTask implements Runnable,Future :
+    FutureTask 实现了 Runnable、Future接口，因此FutureTask可以包装Callable或Runnable对象。
+    FutureTask 表示一个异步的可取消的操作。提供了Future接口的基础实现，包括 执行任务，取消任务、查询任务是否完成、
+    检索执行结果(只有任务执行完以后才可以检索)。任务执行完成后不能重新执行或者取消,除非用的 runAndReset() 来执行的任务。
+
+    get():任务没有执行完时会阻塞。
+
+    FutureTask任务被执行时也用一个状态来描述。
+
+    private volatile int state;

@@ -1,0 +1,272 @@
+﻿   ThreadPoolExecutor extends AbstractExecutorService :{
+        思考：
+            为什么Worker对象是一个同步器？
+                答案在Worker类的注释
+
+                
+
+
+
+   }
+---------------------------------------------------------------
+
+	   包装并维护 核心线程池的两个重要成员 [runState] 、[workerCount]。
+	    TODO(为什么要用一个成员ctl 代表两个成员(runState、workerCount)的含义 ？ )
+	        两个成员使用时需要考虑由于 [竞态条件] 造成的 [线程安全 ]问题，比一个成员难以维护。
+
+		workerCount ： 表示有效的线程数量 , 即已经开始并且没有结束的线程。可能短暂的和实际的线程数量不一致。
+		runState ：    线程池的状态，即线程池的生命周期。枚举值含义如下：
+			  RUNNING ： 接收新任务 ，执行任务队列里面的任务。
+			  SHUTDOWN ：不接收新任务，但是执行任务队列里面的任务。
+			  STOP ：不接收新任务，不执行任务队列里面的任务，并且中断进行中的任务。
+			  TIDYING ：表示所有任务都结束了，此时workerCount 为 0，线程过度到此状态时，将执行terminated()方法。
+			  TERMINATED ：表示terminated() 方法执行完了。
+					
+			  runState 在这些枚举值 中单调的 增加 (从RUNNING -> TERMINATED 是从小到大的顺序)，但是不用命中每一个枚举值。
+			  当runState值为TERMINATED时，在awaitTermination()方法上等待的线程将return.
+
+	1、将两个int变量包装成一个int变量，它们分别有不同的取值： workerCount ：最大值为 CAPACITY。 
+	2、初始值为 ：  RUNNING | 0 即 RUNNING ，任何值  “|”上0 都是其 本身。
+	// TODO(成员ctl如何表示 两个成员变量(runState、workerCount)呢？)
+	    首先表示状态，有如下5个取值， 并且状态runState的值只能单调的递增，即从 RUNNING->TERMINATED ,但不用命中每一个枚举值.
+	    其次只有状态为时RUNNING时，workerCount才有意义，因此状态为时RUNNING时 ，ctl 才可以递增或递减， 那么workerCount 的取值范围就是 RUNNING->SHUTDOWN.
+	        也就是 -536870912 - 0 。
+	private final AtomicInteger ctl = new AtomicInteger(ctlOf(RUNNING, 0));
+	
+	//单位Unit	
+	private static final int COUNT_BITS = Integer.SIZE - 3;  // 29
+	// TODO(以下runState的值单调的递增) 
+	private static final int RUNNING    = -1 << COUNT_BITS;	// -536870912
+	private static final int SHUTDOWN   =  0 << COUNT_BITS; // 0
+	private static final int STOP       =  1 << COUNT_BITS; // 536870912
+	private static final int TIDYING    =  2 << COUNT_BITS;	// 1073741824
+	private static final int TERMINATED =  3 << COUNT_BITS; // 1610612736
+	
+
+	// 线程池容量 ，约等于 无限大
+	private static final int CAPACITY   = (1 << COUNT_BITS) - 1; // 536870911
+
+	// 线程池锁：简称为池锁，是可重入锁 ， 向线程池添加、移除 worker(包装了线程) 使用的锁。
+	private final ReentrantLock mainLock = new ReentrantLock();
+	// 提供等待、唤醒功能
+	private final Condition termination = mainLock.newCondition();
+
+	// 用来统计完成的总任务数， 只能在持有线程池锁下访问
+    private long completedTaskCount;
+
+	// 包含所有工作线程的 Worker集合。只有持有 mainLock锁才能访问 这个集合。
+	// 可以把这当作线程池
+	private final HashSet<Worker> workers = new HashSet<Worker>();
+
+    TODO( 如何区分线程池中的线程是 核心线程 还是 非核心线程呢？)
+
+
+     /*
+      * 入口方法：
+      * Proceed in 3 steps:
+      *
+      * 1. 如果正在运行的线程数小于 corePoolSize , 就尝试开启新线程来执行任务. addWorker方法 会原子性的检查[运行状态state] 和 [计数]  
+	   它返回false 来防止 错误的向线程池中添加线程。
+ 
+      *
+      * 2. 如果一个任务成功的被添加到了队列，仍然检查是否应该添加线程，因为上次检查的线程可能挂了。
+	   因此重新检测state,如果正在排队的线程停止了，则回滚线程。 否则 开启新的线程。
+	   
+      *
+      * 3. 如果不能将任务排队, 尝试添加一个新的线程，如果添加失败，表示线程池shutdown 或 饱和了, 那就任务拒绝任务。
+      */
+    public void execute(Runnable command) {
+         if (command == null)
+             throw new NullPointerException();
+
+         TODO( ctl :  线程池重要的两个成员[state]、[workerCount] 的封装 )
+
+
+         int c = ctl.get();     // 获取ctl
+         //  TODO(此时表示核心池未满 : 任务和线程一起打包为Work对象，并添加到 [ 线程池 ] .)
+         //  运行的线程数量 小于 corePoolSize 。 暂时理解为： 核心池未满，看源码其实没有核心池的概念，而是用一个corePoolSize变量表示线程数量的上线。
+         if (workerCountOf(c) < corePoolSize) {
+
+                 // 将 任务、线程 封装进Worker, 添加到 worker池。worker池就是线程池。并启动线程。
+                 if (addWorker(command, true))  // 成功则返回
+                     return;
+                 c = ctl.get();  // 失败则重新获取 ctl
+         }
+
+
+         // TODO(此时表示核心池已满 ： 即线程数量达到corePoolSize 上限。 那么开始向 [任务队列] 添加任务)
+         if (isRunning(c) && workQueue.offer(command)) {  // 如果线程池状态为RUNNING ，并且将任务添加到 任务队列成功。
+                 // 重新获取 ctl
+                 int recheck = ctl.get();
+
+                 // 如果此时线程池不是 RUNNING 状态 了，就删除 刚添加到队列的任务 , 删除成功就执行拒绝策略。
+                 if (!isRunning(recheck) && remove(command))
+                        reject(command);
+
+                 else if (workerCountOf(recheck) == 0) // 此时线程池状态为RUNNING，如果线程数量为0，则添加一个线程。
+                        addWorker(null, false);    // 任务为null时，可以只添加 线程到 worker线程池。
+         }
+
+
+         // TODO (此时表示1、 线程池状态为 SHUTDOWN  ) 或  (2、 线程池状态为 RUNNING、任务队列已满  )
+         情况1、 addWorker 必添加失败 ，因为一个if 判断return false了 。
+         情况2、 如果    corePoolSize < 线程池的线程数量 < maximumPoolSize , 则添加成功，否则添加失败。
+         else if (!addWorker(command, false)) // TODO( 注意细节：参数为false，表示核心池满了以后再添加。 )
+
+                // 线程池的线程数量达到上线，执行拒绝策略。
+                reject(command);
+
+    }
+
+
+
+    // 计算 线池中正在运行的线程的数量
+    private static int workerCountOf(int c)  { return c & CAPACITY; }
+    
+    // 判断是否为 RUNNING 状态
+    private static boolean isRunning(int c) {
+        return c < SHUTDOWN;
+    }
+    
+    // 获取(计算)线程池的状态
+    private static int runStateOf(int c)     { return c & ~CAPACITY; }
+
+    // 从任务队列中移除任务。
+    public boolean remove(Runnable task) {
+        boolean removed = workQueue.remove(task);
+        tryTerminate(); // In case SHUTDOWN and now empty
+        return removed;
+    }
+
+	
+    /**
+     *  将 任务、新创建的线程打包进 Worker, 并添加到 Worker池(就是线程池)，并启动线程。
+     *	一个Worker就是一个线程。
+     *  firstTask : 任务对象 ，可以为null.
+     *	core ： true: 添加线程时，上限为核心池大小   false : 添加线程时，上限为线程池大小。 
+     *  
+     *  return true : 添加任务成功，并启动成功。  false: 启动失败。
+     */
+    private boolean addWorker(Runnable firstTask, boolean core) {
+          retry:
+          for (;;) {
+              int c = ctl.get();
+              int rs = runStateOf(c);  // 获取线程池的状态
+
+              // if( 线程池状态 >= SHUTDOWN ) {
+                        if(状态rs>SHUTDOWN 或 任务对象不为空 或  任务队列为空){  // 这里的任一条件满足就命中false
+                            命中 return false         // 相反：以上条件都不满足才不命中 return false.
+                        }
+                 }
+              if (rs >= SHUTDOWN && !(rs == SHUTDOWN && firstTask == null && !workQueue.isEmpty())  )
+                  return false;
+.
+              TODO?( 此时情况1，状态rs为 RUNNING )
+              TODO?( 此时情况2，状态rs为 SHUTDOWN，任务对象为空，任务队列不为空 )
+
+              for (;;) {
+            // 获取线程池中有效线程的数量
+                  int wc = workerCountOf(c);
+
+                    //  ( 忽略条件 ：wc >= CAPACITY  认为true即可。)
+                    //  有效线程的数量 达到上限 ，则添加任务失败。
+                  if (wc >= CAPACITY || wc >= (core ? corePoolSize : maximumPoolSize))
+                      return false;
+
+                  // 线程安全的 +1 ： 线程池中有效线程的数量 ， 成功则退出  retry修饰的for循环。
+                  if (compareAndIncrementWorkerCount(c))
+                      break retry;
+
+                  // 再次获取线程池的状态，如果线程池的状态有变化，结束本次retry修饰的for循环，没有变化则继续在内循环中循环(对线程数量安全的+1)。
+                  c = ctl.get();
+
+                  if (runStateOf(c) != rs)
+                      continue retry;
+                  // else CAS failed due to workerCount change; retry inner loop
+              }
+          }
+
+         // 经过以上两层for循环后，线程数量会+1，除非 线程池 shutdown或 满了.
+
+          boolean workerStarted = false; // 任务是否开始执行的标记
+          boolean workerAdded = false;   // 任务是否被添加成功的标记
+          Worker w = null;
+          try {
+
+          // 用Worker将 任务、新创建的线程 包装起来  。
+              w = new Worker(firstTask);
+
+              final Thread t = w.thread;
+              if (t != null) {
+                  final ReentrantLock mainLock = this.mainLock;
+                  mainLock.lock();		加锁
+
+                  try {
+                      // Recheck while holding lock.
+                      // Back out on ThreadFactory failure or if
+                      // shut down before lock acquired.
+              // 再次获取线程池的状态
+                      int rs = runStateOf(ctl.get());
+
+                      if (rs < SHUTDOWN || (rs == SHUTDOWN && firstTask == null) ) {
+
+                // 线程启动前 检测线程状态，此时线程刚被创建。isAlive 为false
+                          if (t.isAlive()) // precheck that t is startable
+                              throw new IllegalThreadStateException();
+
+                  //  加入线程池
+                          workers.add(w);
+
+                  //
+                          int s = workers.size();
+                          if (s > largestPoolSize)
+                              largestPoolSize = s;
+
+                          // 标记 添加线程到线程池 成功
+                          workerAdded = true;
+                      }
+                  } finally {
+
+                      // 解锁
+                      mainLock.unlock();
+
+                  }
+
+                  // 如果添加线程到线程池成功，则启动线程。
+                  if (workerAdded) {
+                      t.start();
+
+                     //  标记 线程启动 成功
+                      workerStarted = true;
+                  }
+              }
+          } finally {
+
+         // 如果线程启动失败 ， 则线程安全的 从线程池中 移除 worker .即线程。
+              if (! workerStarted)
+                  addWorkerFailed(w);
+
+          }
+
+          return workerStarted;
+
+    }
+	
+    // 线程安全的 从线程池中 移除 worker .即线程。	
+    private void addWorkerFailed(Worker w) {
+	 final ReentrantLock mainLock = this.mainLock;
+	 mainLock.lock();
+	 try {
+	     if (w != null)
+	         workers.remove(w);
+	     decrementWorkerCount();
+
+	     // 如果线程池状态为 STOP 并且 池为空，  则 将线程池设置为 TERMINATED 状态。
+	     // 如果线程池状态为 SHUTDOWN 并且 池 和 任务队列 为空，  则 将线程池设置为 TERMINATED 状态。
+	     // 总结：STOP状态 并且要求池为空 ，则设为 TERMINATED 状态。
+	     // 总结：SHUTDOWN状态 并且要求池和 任务队列都为空 ，则设为 TERMINATED 状态。
+	     tryTerminate();
+	 } finally {
+	     mainLock.unlock();
+    }
+    }

@@ -100,14 +100,28 @@
 
                        Java内存模型(JMM)决定了一个线程对共享变量的写入 何时 对另一个线程可见。即JMM来解决。
 
+         TODO(问:JMM的作用是什么，或者说 JMM是干什么的 ？）
+            由于重排序影响了多线程间的可见性，程序员需要利用重排序指令来适配各个硬件平台，而这个工作由JMM来做了，程序员只需要面向JMM开发即可 保证线程
+            间的可见性。 JMM的作用就是 在重排序问题上对各个硬件平台的内存模型进行了统一的适配，为Java程序员呈现了一个一致的内存模型。
+            从而简化了多线程编程。
+
+
          happens-before规则概述：操作A 的结果 对 操作B 可见 , 叫做 A happens-before B. 并不一定要 A在B前执行。
 
                     程序顺序规则：一个线程中的每个操作，happens-before于该线程中的任意后续操作。
                     监视器锁规则：对一个锁的解锁 操作，happens-before于随后对这个锁的加锁 操作。
-                    volatile规则：对volatile变量的写操作，happens-before于 后续对这个volatile变量的读操作。
+
+                    volatile规则：对volatile变量的写操作，happens-before于 后续对这个volatile变量的 读操作。
+
                     传递规则：如果A操作 happens-before B，且B happens-before C，那么A happens-before C。
+
                     线程启动、中断、终止法则 ：
-                    对象终结法则：析构函数 happens-before 于 构造函数的结束。
+                        启动： 线程A 对 线程B 的启动 , 即在A线程调用 threadB.start()，则threadB.start() 操作 happens-before于 B中的操作。
+                        中断： 在线程A 中调用 线程B interrupt , happens-before于 线程B发现中断。
+                               发现中断就是抛出InterruptException 或 调用isInterrupted 或 调用Thread.interrupted
+                        终止： 线程A的所有动作 happens-before于 其他线程检测到 线程A已经终止。
+                                已经终止 就是 线程A.join() 成功返回 或者 线程A.isAlive() 为false.
+
 
             从JDK 5开始，Java使用新的JSR-133内存模型。JSR-133使用happens-before的概念来阐述操作之间的内存可见性。
             在JMM中，如果一个操作执行的结果需要对另一个操作可见，那么这两个操作之间必须要存在happens-before关系。

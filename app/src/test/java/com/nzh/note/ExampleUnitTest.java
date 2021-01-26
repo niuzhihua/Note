@@ -1,5 +1,7 @@
 package com.nzh.note;
 
+import com.nzh.note.concurrent.TribleLock;
+
 import org.junit.Test;
 
 import java.sql.Time;
@@ -21,6 +23,7 @@ public class ExampleUnitTest {
 
         assertEquals(4, 2 + 2);
     }
+
 
 
 }

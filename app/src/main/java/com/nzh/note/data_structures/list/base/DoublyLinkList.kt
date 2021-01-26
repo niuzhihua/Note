@@ -60,14 +60,7 @@ class DoublyLinkList<T> {
 }
 
 fun main() {
-    // 任务：FutureTask、CompletionService、Fork/Join
-    // 多线程设计模式：base:(线程池 + 阻塞队列/并发队列) 生产者消费者模式
-    // 同步控制工具 + 自定义同步控制工具
-    // synchronized 关键字
 
-
-//    自定义同步控制工具 : 阻塞队列
-//    双向链表->AQS->(Lock、Latch、Semaphore、CyclicBarrier.....)->
 
 
 }
