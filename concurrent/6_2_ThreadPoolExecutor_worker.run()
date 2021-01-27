@@ -102,7 +102,7 @@
         *   4、worker/线程在等待获取任务时超时了。( allowCoreThreadTimeOut || workerCount > corePoolSize )
         */
        private Runnable getTask() {
-           // 从任务队列中获取任务时的  超时变量
+           // 从任务队列中获取任务 为null时，timedOut 才为true.
            boolean timedOut = false; // Did the last poll() time out?
 
            for (;;) {
@@ -120,19 +120,25 @@
                int wc = workerCountOf(c);
 
                // Are workers subject to culling?
-               // boolean 定时吗 = 是否允许核心池中的线程超时  ||  核心池满了
+               // boolean timed = worker(线程)对象应该被淘汰吗？
+               TODO(如果设置allowCoreThreadTimeOut 为true,则worker会被淘汰，无论是不是核心线程。 )
+               TODO( corePoolSize < 线程数量 < max ，则worker会被淘汰，即非核心线程会被淘汰。)
                boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;
 
-               // if(线程池满了 或 超时条件满足) {
-                        if(任务队列为空 || 此时至少有2个线程在运行){
+                bool group1 = 条件1:线程池满了 或 条件2:线程池空了并允许淘汰线程
+                bool group2 = 条件3:任务队列为空 || 条件4:此时至少有2个线程在运行
+                TODO( 条件1 和 条件4 : 非核心线程会被淘汰 )
+                TODO( 条件2 和 条件3 : 无论是不是核心线程都会被淘汰 )
+               // if( group1 && group2 ) {
+
                             if(CAS_Decrement(ctl)){
+                                TODO(返回空 则runWorker结束for循环，意味这线程的run方法结束，线程挂掉。)
                                 返回空
                             }else{
                                 结束当次循环继续重试
                             }
-                        }
                   }
-               if ( (wc > maximumPoolSize || (timed && timedOut)) && (wc > 1 || workQueue.isEmpty()) ) {
+               if ( (wc > maximumPoolSize || (timed && timedOut))   &&   (wc > 1 || workQueue.isEmpty()) ) {
                    if (compareAndDecrementWorkerCount(c))
                        return null;
                    continue;

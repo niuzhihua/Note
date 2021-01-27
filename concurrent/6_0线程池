@@ -76,7 +76,7 @@
                 BlockingQueue:阻塞队列
                 操作      抛出异常        返回值             阻塞式的
                 添加      add(E)          offer(E)            put(E)
-                删除      remove()        poll()              take()
+                删除      remove(E)       poll():E or Null    take():E
                 检索      element()       peek()              --
 
 
