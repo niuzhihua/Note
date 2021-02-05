@@ -47,6 +47,38 @@
         android:text="启动模式"
         android:onClick="testLaunchmode"
         />
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_height="wrap_content"
+        android:layout_width="match_parent">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="bindService"
+            android:onClick="bindService"
+            />
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="add"
+            android:onClick="add"
+            />
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="get"
+            android:onClick="get"
+            />
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="unBindService"
+            android:onClick="unBindService"
+            />
+
+    </LinearLayout>
+
 
 
 </LinearLayout>

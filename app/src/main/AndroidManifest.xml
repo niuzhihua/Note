@@ -12,24 +12,37 @@
         <activity
             android:name=".launchmode.SingleIntanceActivity"
             android:launchMode="singleInstance" />
+
         <activity
             android:name=".launchmode.SingleTaskActivity"
-            android:taskAffinity="com.nzh.nostacktop"
-            android:launchMode="singleTask" />
+            android:launchMode="singleTask"
+            android:taskAffinity="com.nzh.nostacktop" />
         <activity android:name=".launchmode.StandardActivity2" />
         <activity
             android:name=".launchmode.StandardActivity"
-            android:taskAffinity="com.nzh.note2"
-            android:launchMode="singleTask" />
-
+            android:launchMode="singleTask"
+            android:taskAffinity="com.nzh.note2" />
         <activity android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
         <activity android:name=".kotlin.myContinueation.sample.AndroidSample.CoroutineActivity" />
         <activity android:name=".kotlin.myContinueation.sample.AndroidSample.CancelCoroutineActivity" />
+
+        <service
+            android:name=".ipc.MyService"
+            android:enabled="true"
+            android:exported="true"
+            android:process=":MyService">
+            <intent-filter>
+                <action android:name="com.nzh.note.ipc.MyService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
