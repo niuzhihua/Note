@@ -1,6 +1,5 @@
 package com.nzh.note.data_structures.list
 
-import com.nzh.note.data_structures.list.base.SingleLinkList
 import com.nzh.note.data_structures.list.base.SingleLinkList2
 
 /**

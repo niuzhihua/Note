@@ -1,0 +1,129 @@
+﻿ 1、RecyclerView 和ListView 区别 ：
+
+	ListView 局限性： 
+		只支持纵向列表一种布局
+		没有支持动画的api
+		接口设计和系统api(View 的api )不一致。
+		没有强制实现ViewHolder
+		性能比RecyclerView 差，尤其是列表复杂的时候。RecyclerView 性能优势明显。
+
+
+	RecyclerView ：
+
+		默认支持Linear，Grid,Staggered Grid 三种布局
+		有ItemAnimator Api 支持
+		强制实现了ViewHolder
+		架构设计清晰：  
+			LayoutManager : 负责摆放View
+			ItemAnimator  : 负责给View 提供动画
+			Adapter       : 负责提供View
+		相对ListView 有更好的性能
+		
+		
+	ViewHolder 是什么？
+
+		ViewHolder 是用来保存View 引用的容器类，每创建一个convertView时，就会同时对应的创建一个ViewHolder .
+		然后把 convertView 和 其所有的 子View 都存入 ViewHolder对象。 最后通过 setTag 方法将 convertView 和
+		ViewHolder 绑定起来。 这就是getView 方法的实现，这种实现 复用了View . 不用重复的findViewById.
+
+	ViewHolder 和 Item 是什么关系？
+		一一对应的关系。
+
+
+	ViewHolder 解决的什么问题？
+		解决了 在getView 方法中  防止重复的findViewById， 从而来提升效率。
+
+
+	getView方法中传递的convertView 什么时候是空的？
+		复用不复用View 和 ViewHolder 无关， 而是和 getView方法参数中的 convertView 有关。  
+		用不用ViewHolder 都在复用View, 只是 findViewById 比较复杂。
+		
+
+
+ 2、RecyclerView 的优化 
+	1、  不要在onBindViewHolder里面这个 监听，会导致重复创建对象。
+	
+		public void onBindViewHolder(...){
+
+			holder.itemView.setOnclickListener(new OnClickListener{
+				
+
+			});
+
+		}
+
+		改为：
+		
+		public void onCreateViewHoler(){
+			holder.itemView.setOnclickListener(new OnClickListener{
+				
+				// 计算出对应的数据
+			});
+
+		}
+
+		或者 写一个全局的 onClickListener. 不过这样所有的业务处理 就会集中一起。要处理好即可。
+	
+	2、 RecyclerView.setHasFixedSize(boolean) 
+
+		当列表数据变化时{
+			if(mHasFixedSize){
+				layoutChildren() // 不会走requestLayout() 
+			}else{
+				requestLayout() // 重新渲染，包括测量，布局，绘制 等。
+			}
+
+		} 
+		
+		使用场景：当RecyclerView 的数据变化不会导致 大小变化的时候 。
+
+
+	3、 多个RecyclerView共享缓存池
+		多个RecyclerView 共用 缓存池RecylclerViewPool 。（RecyclerView提供了Api）
+		
+		  var pool = RecyclerView.RecycledViewPool()
+
+		  recyclerView1.setRecycledViewPool(pool)
+		  recyclerView2.setRecycledViewPool(pool)
+   		  recyclerView3.setRecycledViewPool(pool)
+				
+
+	4、 使用 AsyncListDiffer / ListAdapter 。
+		 android.support.v7.recyclerview.extensions.ListAdapter
+		
+	  	
+
+		
+		局部更新  ： 从一个数据集合到另一个数据集合的 最小更新。 （动态规划算法）
+		在子线程计算 列表差异 ： 
+
+
+	5：使用 Litho 中的 RecyclerCollectionComponent 和 Sections 来优化自己的 RecyelerView 的性能
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+

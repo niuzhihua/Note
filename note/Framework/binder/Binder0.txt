@@ -1,0 +1,145 @@
+﻿
+aidl：的职责：
+	
+		 interface IBookManager extends android.os.IInterface {
+			
+
+		 
+		 }
+
+	1、为客户端、服务端提供2个Binder。
+		为Server：Binder对象。
+			直接new Binder
+
+			 class Stub extends android.os.Binder implements IBookManager{
+			 
+			 
+				public android.os.IBinder asBinder() {
+					return this;
+				}
+			 }
+
+
+		为Client：Server端Binder对象的引用。
+				
+			 class Proxy   implements IBookManager{
+
+				IBinder	mRemote
+
+				public android.os.IBinder asBinder() {
+					return mRemote;
+				 }
+			 }
+		
+		编写接口实现IInterface
+
+		
+
+	2、提供服务
+
+		
+
+
+
+
+服务端：
+	一 个 Binder服务端实际上就是一个Binder类的对象，该对象一旦创建，内部就
+	启动一个隐藏线程。该线程接下来会接收Binder驱动发送的消息，收到消息后，会执行到Binder对象
+	中 的onTransactO函数，并按照该函数的参数执行不同的服务代码。因此，要实现一个Binder服务，就
+	必须重载onTransact()方法。
+
+	onTransact(code,data,reply,flag){
+		
+	
+	
+	}
+
+	任意一个服务端Binder对象被创建时，同时会 在Binder驱动中创建一个mRemote对象，该对象的类型也是Binder类 。
+	客户端要访问远程服务时，都是通过mRemote对象。
+
+客户端：客户端要想访问远程服务，必须获取远程服务 在Binder对象中 对应的mRemote引用。获得该mRemote对象后，就可以调用其transact^)
+	方法，而 在 Binder驱动中， mRemote对象也重载了 transact()方法，
+
+	进程A如何获取进程B的Binder对象的引用 ? 反过来呢？
+
+	场景1、 先来看两个启动服务的方法：
+		startService(...) : 客户端调用此方法后，客户端还没有 Service(服务端) 的binder对象的引用，因此不能调用Service的方法。
+		bindService(...conn) : 客户端调用成功后在conn的回调中 可以拿到 远程服务的binder对象的引用。
+		
+		根据提供的api来看，只能在进程A中bindService才能获取进程B的Binder代理，反之，在进程B中bindService就可以拿到进程A的Binder代理。
+		TODO(如果要互相拿对方进程的Binder代理的话，就需要Service组件在进程A和进程B都有一份，即不能给Service指定进程。)
+
+
+		bindService 如何做到的？
+	
+	场景2、经常使用getSystemService方法获取 系统服务(由ServiceManager管理)，这些系统服务的Binder引用是如何传递给客户端的呢？
+		答案在ServiceManager源码中：
+
+			IBinder b2 = BinderInternal.getContextObject()
+			IServiceManager sServiceManager = ServiceManagerNative.asInterface( b2 )
+		
+
+
+	
+	/**
+	 *
+	 *
+	 * flag ：0：表示双向通信，等待服务端返回数据。 1：单向通信，服务端不返回数据。
+	 */
+	transact(code,data,reply,flag){
+		以线程间消息通信的模式，向服务端发送客户端传递过来的参数。
+		挂 起 当 前 客户端线程，
+		等待服务端线程执行完指定服务函数 后通知
+		接收到服务端线程的通知，然后继续执行客户端线程，并返回到客户端代码区。
+	}
+
+
+
+
+ServiceManager :
+	
+	ServiceManager是一个独立进程，它本身也是一种服务，它是管理其他系统服务的 系统服务.( 类比文件夹是一种管理其他文件的文件）。
+	它就像一个总机电话一样提供 其他电话的咨询。这个总计电话是公开的。
+	系统中任何进程都可以使用BinderIntemal.getContextObject()获取该总机的Binder对象。
+	系统服务在启动时，首先把自己的Binder对 象 传 递 给ServiceManager，即所谓的注册(addService)。
+
+	如果要和ServiceManager服务通信，如何获得ServiceManage服务的 Binder引用呢？
+
+		Framework提供了一个系统函数 BinderIntenal.getContextObject()，它就像总机号码一样是公开的，获取时不需要传参数 .
+		获取ServiceManager 后就可以获取其他系统服务的Service的 Binder引用 。
+
+
+		getSystemService(Flag){		//  命名为getServiceManager() 是不是更形象些了呢
+			
+			// 获取系统服务的 Binder引用.
+			IBinder b = ServiceManager.getService(Flag){
+				// cache获取忽略
+			
+				getIServiceManager().getService(Flag){
+
+					// 获取 ServiceManager服务 的Binder引用 ，并转化为服务接口。
+					IBinder b2 = BinderInternal.getContextObject()
+
+					IServiceManager sServiceManager = ServiceManagerNative.asInterface( b2 )
+					return sServiceManager;  // 
+				}			
+			}
+
+			xxx = asInterface(b)
+		
+		}
+	
+	拿到Binder对象后，调用 asInterface(IBinder) 方法是什么作用？
+
+
+
+
+调用部分流程：
+	客户端调用transact()。
+	调用transact()后，客户端线程进入Binder驱动， Binder驱动就会挂起客户端线程。
+	Binder驱动向远程服务发送一个消息，消息中包含客户端传进来的数据。
+	服务端拿到数据后， 对数据解析，然后执行指定的 函数，
+	执行完毕后， 把执行结果存入客户端提供的reply对象中。
+	服务端向Binder驱动发送一个notify的消息 ,Binder驱动收到notify消息后唤醒客户端线程。
+
+	通信结束，客户端线程继续执行。

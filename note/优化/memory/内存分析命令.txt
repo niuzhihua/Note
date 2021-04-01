@@ -1,0 +1,8 @@
+﻿Android内存分析命令
+http://gityuan.com/2016/01/02/memory-analysis-command/
+
+dumpsys命令用法
+http://gityuan.com/2016/05/14/dumpsys-command/
+
+dumpsys ams 
+http://gityuan.com/2017/07/02/ams_dumpsys/

@@ -1,0 +1,245 @@
+﻿
+	 
+	IPC通信方式 是基于底层的Binder机制，和具体服务没有关系。
+
+		如何实现Binder机制？
+			Android已经实现了
+	IPC通信的目的 是使用服务，这就必然有提供服务、调用服务。
+
+		如何提供服务？
+			提供一套接口的定义，并实现。由Server端来完成。
+
+	由于是IPC,所以用什么方式调用服务 ？
+		以面向对象的方式像调用对象的方法一样调用 【服务对象】的方法。
+
+
+	
+	既然采用Binder机制，并以面向对象的方式调用对象 来实现IPC通信,那么编写的服务需要做到：【采用面向对象的设计,并和Binder结合起来】
+	如何做到？
+		1、
+		首先看面向对象的设计，访问远程服务，通常采用Proxy设计模式。
+			
+						interface IService{
+
+							methodA()
+						}
+			
+			Client :					Server :
+
+			Proxy: implements IService			Stub : implements IService
+			
+			 						RealObj真实对象
+			
+									methodA(){
+			methodA()						realObj.methodA()
+									}
+			
+
+		这样在Client端 调用IService.methodA() 时，Binder机制 将此调用映射到 远程进程的 IService.methodA() 。访问远程服务完成。
+
+		2、如何结合Binder，即把Proxy模式和Binder结合起来 ，因为和Binder结合起来才可以完成 调用的映射。
+			 
+
+			很简单，Client端直接通过构造传递进来 。
+
+			Proxy: implements IService{
+
+				Ibinder mRemote 
+
+				Proxy(Ibinder binder){
+					this.mRemote = binder
+				}
+
+				methodA()
+			
+			}
+
+			而Server端，直接继承Binder类 和Binder结合。
+			
+			class Stub extends Binder implements IService
+
+
+			
+		3、最后,2步骤中的 binder 怎么获取？
+
+			用公开的服务ServiceManger服务来获取 服务对象的代理对象，或叫引用。对于应用程序来讲，它只管调用服务对象即可，不关心服务对象在那个进程。
+		
+
+Binder的表述：
+
+	在一次IPC通信过程种，Binder存在于系统以下几个部分：
+		
+		应用程序进程：包括Server进程、Client进程。
+
+		Binder驱动：管理着 Server进程中的Binder对象 和Client进程中的Binder引用。
+
+		传输数据过程：由于Binder可以跨进程传递，需要在传输数据中予以表述
+
+flat_binder_object 数据结构：
+
+	Binder对象需要以flat_binder_object的形式发送给其他进程( SM进程 ？ )，才可以通信，因为Binder对象的指针就存放在该结构的handle成员中。
+
+	驱动获取到 解析并获取到flat_binder_object 结构后，在内核中创建 一个Binder节点，将Binder对象指针取出并存入节点中。
+	此时，如果有其它进程的线程X 向该Binder 发送数据，也就是写数据，那么【驱动】会根据节点中记录的信息将Binder对象的指针 填入binder_transaction_data的target.ptr中，
+	然后返回给【接收线程Y(Server端的Binder线程)】。  接收线程Y从 binder_transaction_data数据包 中取出该Binder对象指针 ，
+	然后将指针 reinterpret_cast转换为Binder, 并调用onTransact().  onTransact() 中就调用到 了我们编写的 服务函数。
+
+
+	flat_binder_object的成员如下：
+
+		unsigned long type ：表示Binder的类型，取值如下
+
+			BINDER_TYPE_BINDER：表式当前flat_binder_object数据包中传递的是 Binder对象，并且该Binder对象的引用是强类型。
+
+			BINDER_TYPE_WEAK_BINDER ：表式传递的是 Binder对象，并且该Binder对象的引用是弱类型。
+			
+			BINDER_TYPE_HANDLE ：表示传递的是Binder强类型的引用
+
+			BINDER_TYPE_WEAK_HANDLE ：表示传递的是Binder弱类型的引用
+
+			BINDER_TYPE_FD ：示传递的是文件形式的Binder。
+
+		
+		union {		
+
+			当传递的是Binder对象时，用此变量，表示 指向 Binder对象 在进程中的内存地址。
+			void *binder;	
+
+			当传递的是Binder引用时，用此变量，存放Binder引用。
+			signed long handle;
+
+		};
+
+		
+		void *cookie 
+		unsigned long flags
+
+
+Binder在应用程序中的表述：
+
+		 本质上就是 ：【采用面向对象的方式实现服务接口,并将 服务对象和Binder对象 结合起来】
+
+		 注意，Client和Server通信，即Client向Server写数据最终是写给谁，是驱动吗？
+			不是驱动，而是 Server端的Binder对象。 是向远程进程的Binder 对象写。
+
+
+	在Server端的表述：Binder对象 即Stub
+
+
+			 
+			1、Server端定义了抽象类Stub,并继承Binder， 来处理来自Client的 请求数据包。并调用onTransact()方法解析 数据包。
+			
+			2、Stub实现了服务接口， 提供给客户端调用，因此需要 客户端和服务端做映射 ，所以需要为函数其一一编号，这样才可以映射。
+			   Server才可以根据收到的编号决定调用哪个函数。
+
+			
+
+			abstract class Stub extends android.os.Binder implements IBookManager{ 
+				
+				
+				解析的是 来自Client的 binder_transaction_data结构的数据包
+
+				@Override onTransact(int code,Parcel data,Parcel reply,int flag){
+					
+					根据数据包中的code 成员 调用 相应函数。
+					if (code == xxx){
+					
+					
+					}else if(code == xxx){
+					
+					}
+					 
+					如果需要返回数据，就构建binder_transaction_data包，并将返回数据包填入其中
+				}
+			
+			} 
+
+	
+
+	在Client端的表述： Binder引用(或叫代理)
+			
+			1、持有一个 Binder引用，就是Server端Binder对象的引用。
+			2、其调用 服务函数 add并不是 真正调用，而是将 add的参数 包装，通过 Binder引用发送给 Server的Binder,并等待数据返回。
+
+				 
+			此Binder引用的作用是，组长协议，并发送出去。
+			class Proxy implements IBookManager{
+				
+				IBinder mRemote
+				不是真正实现，而是包装参数。 
+				fun add(String str){
+					
+					1、创建一个binder_transaction_data数据包
+
+					2、将TRANSACTION_addBook	填入code
+					3、将_data		填入data.buffer
+					4、指明数据包的目的地：【将 mRemote填入 target.handle】 ，用来告知驱动数据包将路由给哪个Binder对象。
+					mRemote.transact(IBookManager.Stub.TRANSACTION_addBook, _data, _reply, 0) 
+
+					底层通过驱动发送，经过BC_TRANSACTION/BC_REPLY回合完成函数的远程调用并得到返回值。
+
+
+				}
+			
+			
+			}
+	
+
+Binder在传输中的表示:  用flat_binder_object结构表示
+		
+		Binder对象和Binder引用都不能直接在进程之间传输，必须经过驱动翻译。
+
+		当Server把Binder对象传递给Client时（这个Client是SM还是应用程序中的client ? 当然是应用程序中的client ），在发送的数据流中，
+		flat_binder_object中的 type变量为 BINDER_TYPE_BINDER，binder变量指向的是 Server进程用户空间地址。
+
+		注意将Binder对象 给Client是没有意义的，因为Binder对象的地址在另外一个进程中，由于进程隔离的存在而无法调用。
+
+		因此驱动必须对flat_binder_object数据包 中的这个Binder 做 如下修改：
+	
+				
+			当Server发送给Client时，对 数据包做如下修改
+
+				1、修改type：
+					BINDER_TYPE_BINDER --改为--> BINDER_TYPE_HANDLE
+
+				2、在【内核】中创建 【位于接收进程】的Binder对象的引用 。
+
+				3、【将在内核中创建的引用】 赋值  给当前flat_binder_object数据包中的 【 handle变量】。
+
+			当Client发送给Server时，对 数据包做如下修改 :
+				
+				？
+				？
+				？
+
+		总之：
+			经过驱动处理后，接收进程从数据包中获得的Binder引用 才有效。
+			然后才可以将Binder引用填入 binder_transaction_data的target.handle变量。
+			最后才可以将 binder_transaction_data 发送给 Binder对象。
+
+
+		这样做是出于安全性考虑，Client不能随便将一个引用填入binder_transaction_data的target.handle中，就可以向Server请求服务。
+		必须经过内核 来创建该引用，否则驱动会拒绝该请求。因此 Binder驱动就是一个权威机构，只有它派发给进程的Binder 才可以使用。
+		因为驱动派发的Binder在内核中做了注册，是 合法的。
+
+		
+		flat_binder_object数据包在传输时 驱动所做的操作：
+
+		flat_binder_object中的type	发送方的操作					接收方的操作
+				
+		BINDER_TYPE_BINDER		只有Binder对象所在进程才可以发送该类型		第一次接收Binder时，在内核中创建Binder引用，
+		BINDER_TYPE_WEAK_BINDER		第一次发送时，驱动将在内核中创建节点 ，		将新创建的引用赋值给binder_transaction_data的target.handle
+						保存 cookie,flag,binder				将type 类型改为 BINDER_TYPE_(WEAK_)HANDLE 
+
+		
+
+		BINDER_TYPE_HANDLE		获得Binder引用的进程，(即Client)都能发送	？？？？
+		BINDER_TYPE_WEAK_HANDLE		该类型Binder。驱动根据target.handle的值查找
+						建立在内核的引用(即Server端的Binder引用)。
+						如果找到说明引用号合法，否则拒绝该发送请求。
+
+
+
+
+ 
+		

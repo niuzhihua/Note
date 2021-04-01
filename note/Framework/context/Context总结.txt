@@ -1,0 +1,74 @@
+﻿ activity.getBaseContext() :
+    ContextWrapper :
+        public Context getBaseContext() {
+            return mBase;  // mBase就是 ContextImpl
+        }
+  activity.getApplicationContext() :
+     ContextWrapper :
+        public Context getApplicationContext() {
+            return mBase.getApplicationContext();
+        }
+
+  ContextImpl:
+        public Context getApplicationContext() {
+            return (mPackageInfo != null) ?
+                    mPackageInfo.getApplication() : mMainThread.getApplication();
+        }
+
+
+ 1、activity.getApplication() 和 activity.getApplicationContext()区别？
+		
+			getApplicationContext最终实现在ContextImpl中,返回的是本进程的Application对象。
+			getApplication是Activity的方法，返回Application对象.  
+			而一个进程只有一个Application ,所以两者一样。
+
+			测试结果：b1,b2均为true.
+				public void test(View view) {
+
+					boolean b1 = getApplicationContext() == getApplication();
+					boolean b2 = getApplicationContext() instanceof Application;
+
+					Toast.makeText(this, "b1=" + b1 + ",b2=" + b2, Toast.LENGTH_SHORT).show();
+				}
+		
+		于Activity/Service来说 :	getApplication()和getApplicationContext()的返回值完全相同; 都是Application.
+		对于BroadcastReceiver来说:	在onReceive的过程, 能使用getBaseContext().getApplicationContext获取所在Application.
+		对于ContentProvider :		能使用getContext().getApplicationContext()获取所在Application. 
+ 
+		Activity、Service、BroadcastReceiver创建时会初始化所在Application 
+		provider 创建时不会初始化 Application
+
+2、Context attach过程
+	Application:
+		调用attachBaseContext()将新创建ContextImpl赋值到父类ContextWrapper.mBase变量;
+		可通过getBaseContext()获取该ContextImpl;
+	Activity/Service:
+		调用attachBaseContext() 将新创建ContextImpl赋值到父类ContextWrapper.mBase变量;
+		可通过getBaseContext()获取该ContextImpl;
+		可通过getApplication()获取其所在的Application对象;
+	ContentProvider:
+		调用attachInfo()将新创建ContextImpl保存到ContentProvider.mContext变量;
+		可通过getContext()获取该ContextImpl;
+	BroadcastReceiver:
+		程通过参数将ReceiverRestrictedContext传递过去的.
+	ContextImpl:
+		可通过getApplicationContext()获取Application;
+
+
+3、Context使用场景：
+
+	
+	场景		startActivity	startService	bindService	sendBroadcast	registerReceiver	getContentResolver
+
+	Activity		√		√		√		√		√		√
+	Service			-		√		√		√		√		√
+
+	Receiver		-		√		×		√		-		√
+	Provider		-		√		√		√		√		√
+
+	Application		-		√		√		√		√		√
+
+
+
+	当Context为Receiver的情况下:
+		不允许执行bindService()操作, 因为此时Context为ReceiverRestrictedContext，而ReceiverRestrictedContext 不支持bindService.

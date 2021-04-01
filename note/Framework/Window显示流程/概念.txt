@@ -1,0 +1,99 @@
+﻿
+一、Window概述
+
+	Framework 中Window类的实现 是PhoneWindow. 
+	从 WMS的角度来看，一个Window 是一个View类 ,WmS收到用户消息后，需要把消息派发到View. 
+		Window是以View的形式存在的。
+
+	WMS如何把消息派发到窗口？
+
+		接收用户消息的必须是 IWindow类 ,而 实现IWindow类 的 是 ViewRootImpl.W 类
+		每 一 个W 对应一个 ViewRootImpl, 一个 ViewRootImpl 对应一个 View。 这样WMS 就把消息通过W派发到了 View。剩下的消息处理就交给View了。
+		
+		ViewRootImpl.W --> ViewRootImpl--> View
+
+	窗口属性有那些？
+
+		窗口类型：
+			定义在WindowManager类中。用 type成员表示 。共三种类型：
+			
+			应用窗口：依赖与Activity 才可以显示。 窗口的层级范围： 1-99
+			子窗口： 需要有一个父Window才能 显示。 例如Dialog.     窗口的层级范围： 1000-1999
+			系统窗口：应用程序理论上无法创建系统窗口。需要声明权限才创建的 Window .  窗口的层级范围： 2000-2999
+			
+			每一种类型都用一个int常量表示，代表了窗口对应的层（Layer)。 WmS在进行窗口叠加时，会按照该int常量的大小分配不同层，int值越大，代表层的位置越靠上面。
+			WmS在进行窗口叠加时，会动态改变应用窗口的层值，但层值不会大于99。
+			
+			WindowManager.LayoutParams {
+			
+				public int type; // 窗口类型
+
+				public static final int FIRST_APPLICATION_WINDOW = 1 ; //第一个应用Window类型
+				public static final int FIRST_SUB_WINDOW = 1000;      // 第一个子 窗口
+				public static final int FIRST_SYSTEM_WINDOW = 2000;   // 第一个系统窗口	
+			
+				public IBinder token = null;
+			}
+
+		Flags:
+			只要这个窗口亮着，屏幕就亮着
+			FLAG_KEEP_SCREEN_ON
+
+			窗口不接收任何触摸事件
+			FLAG_NOT_TOUCHABLE
+
+			窗口显示时，屏幕点亮(已弃用)
+			FLAG_TURN_SCREEN_ON
+
+			。。。。
+
+			可以通过以下方式设置窗口的Flags
+
+			activity.onCreate(){
+			
+				getWindow().setFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+
+
+				setContentView(R.layout.activity_main);
+				.....
+				.....
+
+				btn_BindService.postDelayed(new Runnable() {
+				    @Override
+				    public void run() {
+					getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+				    }
+				}, 5000);
+			}
+
+
+		systemUiVisibility:
+
+			注意这个属性的枚举值定义在 View类中，而不是WindowManager.
+			我们只能针对一个View设置它的systemUiVisibility。
+			
+			部分取值：
+				
+				此属性修饰的View将全屏显示
+				SYSTEM_UI_FLAG_FULLSCREEN
+
+			如果希望整个View树使用同一个systemUiVisibility。
+			可以对根View设置
+
+			getWindow().getDecorView().setSystemUiVisibility(...)
+
+	与创建窗口相关的IPC 对象： 一般只有两种
+		一种是指向某个 ViewRootImpl.W 类的 token
+		一种是指向某个 ActivityRecord 的 token ，作用是 AmS内部为运行的每一个Activity创建的一个Binder对象
+
+	窗口的 token 是什么？
+		一般都是一个Binder对象 。
+		
+		ActivityRecord{
+			static class Token extends IApplicationToken.Stub {
+
+			}
+		}
+
+
+

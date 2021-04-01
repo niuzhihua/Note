@@ -1,0 +1,259 @@
+﻿ 
+ 本笔记参照链接：
+
+ http://weishu.me/2016/01/12/binder-index-for-newer/
+ https://blog.csdn.net/universus/article/details/6211589
+
+ https://blog.csdn.net/u012439416/article/details/52886687
+
+ 基于Binder的IPC机制 简介：
+
+	Android为什么要选择 基于Binder的IPC机制 ?
+		性能好，安全性高。
+
+		共享内存 ：数据拷贝0次，控制复杂，难以使用。
+		Binder ：  数据拷贝1次。	
+		Socket/管道/消息队列 ：数据拷贝2次，传输效率低，开销大.
+
+	站在应用程序角度用面向对象的方式理解Binder IPC
+
+		Binder使用Client-Server通信方式，这种方式必须实现以下3点：
+
+			Server必须有确定的访问接入点或者说地址 来接收 Client的请求，
+			Client必须通过某种途径获知Server的地址。
+			必须制定Command-Reply协议来传输数据
+
+		从面向对象的思想来看，Binder是一个位于Server中的对象,提供了服务的实现。访问此服务， 就是调用这个对象的方法。
+		只不过这个对象在远程进程中，而Client 一端，持有着这个 对象的引用，或者叫指针，代理，句柄等。
+		在Client看来，通过这个 Binder引用调用其方法和 普通的调用对象的方法 没什么区别 ，虽然Binder对象在远程。访问一个Server 就像调用一个对象。
+
+		Binder对象是一个可以被 跨进程引用的对象，它的实体位于一个进程中，而它的引用却遍布于系统的各个进程之中。
+
+	Binder 通信模型
+
+		Binder框架定义了四个角色：Server，Client，ServiceManager（SM）、Binder驱动，Server，Client，SM运行于用户空间，驱动运行于内核空间。
+		类比网络通信看四者的关系：
+			Server：	服务器
+			Client：	客户终端
+			SM：		域名服务器（DNS）
+			Binder驱动：		路由器
+
+
+	Binder驱动：
+		虽然名字叫“驱动”，但是和硬件没有关系。就是一个中转站。【运行在内核态】，作用是提供跨进程的消息传递。包括：
+
+		Binder在进程之间的传递
+		Binder引用计数管理
+		数据包在进程之间的传递和交互
+		...
+
+		驱动和应用程序之间定义了一套接口协议，主要功能由ioctl()接口实现 ,而没有提供read()，write()接口。
+				
+
+		存在两个Binder对象 ， 一个是服务端的Binder对象，另一个则是 Binder驱动中的Binder对象(不会再额外产生一个线程)。
+		服务端的Binder对象 : 会产生一个线程
+		Binder驱动中的Binder对象 :不会产生一个线程
+
+	ServiceManager :
+
+		SM 的作用是将字符形式的Binder名字转化成 一个Binder引用.使得Client能够通过Binder名字获得 Server中Binder对象的引用。
+
+		
+
+	
+	Binder的注册：    
+
+		推测1：Server端先生成Binder引用，并将Binder对象和引用 提交给驱动，驱动再提交给 SM.
+		推测2：Server端将Binder对象提交给驱动，驱动生成 引用，再提交给 SM.
+
+		不管那种理解：总之 Binder驱动可以记住 Server端Binder的引用。
+		
+		
+		Server端创建Binder对象后， 取一个字符形式的名字，然后将 名字和Binder对象 发送给 驱动。
+		
+		驱动在内核中 创建 一个节点 和 Binder引用。
+
+		最后 驱动 将名字和Binder引用 打包发送给SM ， 通知SM注册了一个叫XXX 的Binder，位于进程 A中。 
+
+		SM收到数据后，取出名字和Binder引用，存入表中。
+		
+		
+		
+		SM是一个进程，Server是另一个进程，Server向SM注册Binder必然会涉及进程间通信。SM 和其它进程通信也采用 Binder机制，
+		SM是Server端，有自己的Binder对象，其它进程都是Client。
+		SM提供的Binder比较特殊，没有名字也不需要注册，是预先创建出来的。
+
+
+
+	 Client端获得实名Binder引用：
+		
+		一个Server向SM注册Binder后，Client就可以通过名字获取Binder引用了。 SM 收到获取Binder引用的请求后，根据name 从表中查出Binder引用，
+		返回给 Client.  这样一个 Binder对象就有了两个引用，  一个在 SM中，一个在Client中。还可以有更多的引用。而Binder对象只有一个。
+	
+	Binder引用描述：
+
+		Binder引用可以在进程之间传递 ,就像Java里将一个引用赋给另一个引用一样。
+		Binder引用的创建必须有驱动的参与，它是强类型的，需要驱动为其维护引用计数。	
+
+
+
+	Binder协议：
+		
+		Binder协议基本格式是（命令+数据）。使用ioctl(fd, cmd, arg)函数实现交互。命令由参数cmd承载，数据由参数arg承载，随cmd不同而不同。
+
+		
+		命令								数据
+
+		BINDER_WRITE_READ					struct binder_write_read {
+		先写后读:	
+			if(write_size > 0)					操作完成时，Binder驱动写入/读取的数据个数
+			将write_buffer写入Binder				signed long read_consumed;
+										signed long write_consumed;
+			if(read_size > 0)						
+			将Binder数据读入read_buffer								
+										signed long write_size;
+										signed long read_size;
+
+										向Binder写入的数据
+										unsigned long write_buffer;
+
+										从Binder读出的数据
+										unsigned long read_buffer;
+
+									};
+		
+		若要发送异步命令可以只填入写部分而将read_size置成0；
+		若要只从Binder获得数据可以将写部分置空即write_size置成0；
+		若要发送请求并同步等待返回数据可以将两部分都置上。
+
+		BINDER_SET_MAX_THREADS：由于Client是并发向Server端发送请求的，Server端必须开辟线程池为这些并发请求提供服务。
+					作用是告知驱动的接收方(通常是Server) 线程数量到上限时不再创建线程。
+
+
+		BINDER_THREAD_EXIT：通知Binder驱动当前线程退出了，Binder会为所有参与Binder通信的线程（包括Server线程池中的线程和Client发出请求的线程）
+					建立相应的数据结构。这些线程在退出时必须通知驱动释放相应的数据结构。
+
+		这里只关注最常用的命令：BINDER_WRITE_READ ，其他命令忽略。。。。
+
+
+	
+	BINDER_WRITE_READ ：
+
+		以上了解到这个命令分 写操作、读操作。
+		
+		写操作：
+			写操作的数据放在 write_buffer 成员中。写操作的数据格式 也是：命令+数据 。
+
+			即write_buffer 中存放的数据格式是 ：命令+数据。数据格式根据命令不同而不同。
+			
+			这里只看最常用的 写操作(命令+数据)：
+
+
+			BC_TRANSACTION ：表示Client向Server发送请求数据 ,后面紧接着一个binder_transaction_data结构体表明要写入的数据。
+
+			BC_REPLY ：表示Server向Client发送 (应答)数据 ,后面紧接着一个binder_transaction_data结构体表明要写入的数据。
+
+		读操作：
+			从Binder里读出的数据存放在 read_buffer 成员中。格式和写操作一样，为( 消息ID+数据 )
+
+
+			Binder读出的命令 及 其相应的参数值：  只列出常见的
+			
+			BR_TRANSACTION ：对应发送方的 BC_TRANSACTION命令，表示当前接收的数据是请求的数据。 数据类型为 binder_transaction_data结构体 。
+
+			BR_REPLY ：对应发送方的BC_REPLY 命令，表示当前接收的数据是回应的数据。数据类型为 binder_transaction_data结构体 。
+
+
+
+
+	binder_transaction_data ： 该结构是 Binder接收/发送数据包的标准格式
+			
+		以下列举重要成员：
+
+			0、unsigned int code;
+
+				存放 Client和 Server两端约定的 函数编号。通常是Server端定义的公共接口函数的编号。		
+
+			1、
+			union {
+				
+				对于数据包发送方，即写操作：此成员表示目的地，值为Binder对象的引用，就是指针。	  用 target.handle 获取。
+				对于数据包接收方，即读操作：此时Binder驱动已将该成员修改成 远程Binder对象内存的指针。 用 target.ptr 获取。
+
+
+				不理解的话这里只需要记得: 
+					发送方(Client、Server都有可能) 用 target.handle 获取 Binder .
+					接收方(Client、Server都有可能) 用 target.ptr 获取Binder .
+
+
+				Binder驱动能 自动的将[发送方] 传入的 [Binder对象的引用/指针] 转换成 [接收方Binder对象的指针] ,
+				因为接收方( 即Server里面的Binder ),在向SM注册时， 驱动能够记录 该接收方Binder引用/指针。
+				因此：接收方(Client端)可以直接将其当做对象指针来使用，直接用reinterpret_cast转换。
+					union u = reinterpret_cast<union>( target.ptr )
+				
+
+				驱动可根据此成员得知 数据包 将路由给哪个Binder对象。
+				size_t handle;
+		
+				指向 Binder对象的内存空间
+				void *ptr;
+
+			} target;
+			
+		
+
+			2、
+			unsigned int flags :
+
+				Binder交互有同步和异步之分，利用binder_transaction_data中flag来区分。
+					
+					1：	异步交互，即Client端只管发送请求，Server不返回BC_REPLY数据包 。
+					else：  Server返回BC_REPLY数据包,Client端需要等待接收完数据包，才算完成一次请求。
+
+			
+			
+			3、
+
+			union {
+				struct {
+
+					存放要 发送 或 接收到的 【数据】，【也有可能连Binder一起存】
+					const void *buffer; // 可以指向任何类型的
+
+					指向 存放Binder偏移位置的 【数组】
+					const void *offsets;
+
+				} ptr;
+
+				可以忽略：无论保证32位还是64位平台，成员data的大小都是8个字节。
+				uint8_t buf[8]; 
+
+			} data;
+			
+			4、
+
+			发送数据时 ：表示将发送的数据长度。
+			接收数据时 ：表示接收到的数据的长度 
+			
+			表示data.buffer指向的缓冲区的数据长度。
+			size_t data_size;   // 可以理解【数据的基地址】
+				
+			5、
+			
+			如果有Binder在data.buffer种传输，则需要将Binder相对data.buffer的偏移位置指出来让驱动知道.
+			可能存在多个Binder同时在数据中传递,所以用数组表示所有的偏移位置。
+
+			若有存放Binder时，表示存放Binder偏移位置的 数组的大小。
+			size_t offsets_size;	// 偏移地址数组的长度 
+
+			
+
+
+
+
+			总之：3、4、5 等成员是为了传输数据和Binder对象(如果有的话)。
+
+
+
+
+

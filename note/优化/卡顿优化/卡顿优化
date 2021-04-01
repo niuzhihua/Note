@@ -1,0 +1,89 @@
+慕课：
+田维术
+张邵文
+    卡顿原因及监控方案：
+            原因1、cpu负载
+            原因2、网络环境
+            原因3、线程竞争/锁竞争 : 监控方案
+
+                            (线上)自己代码中：使用线程池 统一线程管理
+                            (线下)第三方库中：1、利用8.0版本以后支持的JVMTI 监控线程的创建 等。
+                                              2、自己hook线程的创建
+            原因4、UI线程中的函数耗时 : 监控方案
+                             (线上)1、监控Activity的生命周期方法耗时，
+                                      可以在Application中注册 回调，并插入监控代码。
+                             (线上)2、其他函数耗时：
+                                      编译时为函数插桩
+            原因4.1、主线程执行了IO操作 ：
+                在收到VSYNC信号时，如果UI线程忙于执行某个耗时任务，就会无法对UI进行渲染 ，这时就会卡顿。
+
+
+    卡顿优化子集：UI优化
+            UI渲染原理：
+            UI卡顿原因： 除以上原因外，【渲染耗时】也是一大原因。UI渲染耗时会导致丢帧，如果出现连续丢帧，表现出来就是卡顿。
+            UI过度绘制定位：
+                    图形化工具：
+                        systrace:   官网提供的性能检测工具。
+                        Profile  GPU Rendering：手机自带，提供简单的过度绘制预览。
+                        graphics api debugger：谷歌提供的判断UI渲染性能的工具, 可检测是否经常丢帧、丢帧发生在渲染的那个阶段、是否存在过度绘制等
+                            https://www.jianshu.com/p/f118e2f1c46a
+                            https://github.com/google/gapid/releases
+
+                    命令：有命令支持就可以自动化(监控)
+                            1、dumpsys gfxinfo : 可以用此命令实现帧率的监控
+                                                 除了渲染性能外，还可以拿到渲染所占内存和View Hierarchy信息。
+
+                                adb shell dumpsys gfxinfo 包名
+                                adb shell dumpsys gfxinfo 包名 framestats  // 6.0之后
+
+                                TODO(详细信息含义：)
+                                https://www.jianshu.com/p/7477e381a7ea?tdsourcetag=s_pcqq_aiomsg
+
+                            2、dumpsys SurfaceFlinger
+                                可以打印当前activity界面出渲染所使用的内存。
+                                例如：
+                            0x7f9d834950: 9180.00 KiB | 1080 (1088) x 2160 |        1 | 0x20000900 | com.nzh.note/com.nzh.note.MainActivity
+
+                            3、帧率监控：
+                                Choreographer ：Choreographer post Message 的时候，会把这些消息设为 Asynchronous ，
+                                这样Choreographer 中的这些 Message 的优先级就会比较高，
+                            4、BlockCanary：
+                                BlockCanary 基于 消息机制 的性能监控
+            渲染优化手段：
+                    1、尽量使用硬件加速
+                    2、优化创建View ： 创建View会在UI线程 解析xml、反射创建View等。
+
+                            X2C ： 在性能要求高，修改不频繁的界面使用 。  缺点：有很多情况不能转换
+
+                            异步创建View :
+                            View重用：见CreateViewThread，性能提升5倍
+
+                    3、measure/layout优化：
+                        measure优化：减少布局层次：使用<ViewStub> 、<Merge> 。
+                        layout优化 ： 避免使用ReletiveLayout 或 基于weight的LinearLayout . 使用ConstraintLayout代替。
+                        draw 优化: 避免重复的设置背景。
+
+                        measure/layout优化：使用 PrecomputedText , 它提供了接口可以异步进行measure和layout。
+                                            (9.0版本支持)
+                    4、RenderThread 与RenderScript : 实现动画的异步渲染，主线程卡顿的时候，动画不受影响。
+
+
+                    其他：
+                        使用Flutter、Compose 。
+
+
+
+
+
+
+
+
+
+
+
+
+            ANR ：监控方案
+                  (灰度)利用消息机制
+    UI优化：
+
+

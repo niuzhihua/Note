@@ -1,0 +1,153 @@
+
+SharedPreference（下文简称sp）是一种轻量级的存储方式,sp在创建的时候会把整个文件全部加载进内存，
+如果你的sp文件比较大，那么会带来几个严重问题：
+
+    一、第一次从sp中获取值的时候，有可能阻塞主线程，使界面卡顿、掉帧。
+    二、解析sp的时候会产生大量的临时对象，导致频繁GC，引起界面卡顿。
+    三、这些key和value会永远存在于内存之中，占用大量内存。
+
+         sp = this.getSharedPreferences("shared_pref", MODE_PRIVATE);
+
+         sp.edit().putString("name", "value").apply();
+
+         String name = sp.getString("name", "default");
+-----------------------------------------------------------------------
+    SharedPreference使用时的注意事项:
+
+        1、禁止存放大的key,value. 可能导致 频繁GC，占用内存(浪费)、界面卡顿。
+        2、不要使用commit. 其在主线程直接进行了磁盘写入。
+        3、读取频繁的key和不易变动的key尽量不要放在一起，影响速度。
+        4、不要多次edit和apply ：多次edit导致占用内存 ，多次apply可能导致activity切换时卡顿。
+        5、不要存放JSON和XML，由于字符转义导致频繁创建对象，可能导致GC.卡顿。
+        6、禁止用sp跨进程通信，不靠谱。
+
+--------------------------------------------------------------------------
+    1、禁止在sp里面存储超级大的Key。
+        原因：会被永久加载到内存中，不能自动回收。
+        sp1 = this.getSharedPreferences("key", MODE_PRIVATE)；    // ok
+        sp2 = this.getSharedPreferences("key2", MODE_PRIVATE)；   // ok
+        sp3 = this.getSharedPreferences("超级大的key", MODE_PRIVATE)；// ugly
+        实现如下：
+
+            ContextImpl:
+            // 静态变量：sSharedPrefsCache
+            private static ArrayMap<String, ArrayMap<File, SharedPreferencesImpl>> sSharedPrefsCache;
+            getSharedPreferences
+                getSharedPreferencesCacheLocked(){
+                        .....
+                        final String packageName = getPackageName();
+                            // 加载的对象
+                            ArrayMap<File, SharedPreferencesImpl> packagePrefs = sSharedPrefsCache.get(packageName);
+                            if (packagePrefs == null) {
+                                packagePrefs = new ArrayMap<>();
+                                // TODO(被加载进来的这些大对象，会永远存在于内存之中，不会被释放。)
+                                // 由于sSharedPrefsCache 是静态的，程序中使用到的那些个sp永远就呆在内存中。
+                                sSharedPrefsCache.put(packageName, packagePrefs);
+                            }
+                            return packagePrefs;
+                }
+
+    2、使用sp获取value时 可能会卡顿主线程。
+             如果直接调用getString，主线程会等待加载sp的线程加载完毕！这可能导致主线程卡住。
+
+            public String getString(String key, @Nullable String defValue) {
+                synchronized (this) {
+                    awaitLoadedLocked();
+                    String v = (String)mMap.get(key);
+                    return v != null ? v : defValue;
+                }
+            }
+            private void awaitLoadedLocked() {
+                while (!mLoaded) {
+                    try {
+                        wait();
+                    } catch (InterruptedException unused) {
+                    }
+                }
+            }
+
+
+    3、禁止存储等特殊符号很多的value，例如JSON，html,xml. 这会引起sp读取速度的急剧下降。
+        原因:
+             JSON、HTML格式存放在sp里面的时候，需要转义，这样会带来很多 & 这种特殊符号，
+             sp在解析碰到这个特殊符号的时候会进行特殊的处理，引发额外的字符串拼接以及函数调用开销。
+
+    4、禁止 多次edit
+            原因：
+                每次edit都会创建一个Editor对象，额外占用内存。
+                多次apply会卡界面
+
+            // 每次调用edit() 方法都会创建 一个EditorImpl对象。
+            public Editor edit() {
+                synchronized (mLock) {
+                    awaitLoadedLocked();
+                }
+                return new EditorImpl();
+            }
+
+    5、多次apply 可能导致卡顿。
+
+            原因：如果使用太多次的apply，QueuedWork队列会有很多写入任务，而只有一个子线程在写， 影响AMS对activity的调度，导致卡顿。
+                 如果在Activity Stop的时候，已经写入完毕了，那么 不会有任何等待，这个函数会立马返回。
+                handleStopActivity(...){
+                    QueuedWork.waitToFinish(){
+                        while (true) {
+                               Runnable finisher;
+                               synchronized (sLock) {
+                                   // finisher 就是下面的 awaitCommit
+                                   finisher = sFinishers.poll();
+                               }
+                               if (finisher == null) {
+                                   break;
+                               }
+                               finisher.run();
+                        }
+                    }
+                }
+            public void apply() {
+                   。。。。
+                   final Runnable awaitCommit = new Runnable() {
+                           @Override
+                           public void run() {
+                               try {
+                                   // 等待写入线程，会阻塞喔。
+                                   mcr.writtenToDiskLatch.await();
+                               } catch (InterruptedException ignored) {}
+                           }
+                       };
+                    //如果多次调用apply，意味着队列QueuedWork会有很多写入任务，而那里就只有一个线程在写。
+                   QueuedWork.addFinisher(awaitCommit);
+                   Runnable postWriteRunnable = new Runnable() {
+                           @Override
+                           public void run() {
+                               awaitCommit.run();
+                               QueuedWork.removeFinisher(awaitCommit);
+                           }
+                       };
+                   SharedPreferencesImpl.this.enqueueDiskWrite(mcr, postWriteRunnable);
+                   notifyListeners(mcr);
+               }
+
+
+    6、不推荐调用commit
+             原因：直接卡主线程。
+             public boolean commit() {
+                        。。。。
+                        MemoryCommitResult mcr = commitToMemory();
+                        // 直接在本线程上 写入磁盘：
+                        SharedPreferencesImpl.this.enqueueDiskWrite( mcr, null /* sync write on this thread okay */);
+                        try {
+                            mcr.writtenToDiskLatch.await();
+                        } catch (InterruptedException e) {} finally {}
+                        notifyListeners(mcr);
+                        return mcr.writeToDiskResult;
+             }
+
+    7、禁止用Sp来跨进程
+
+            sp = this.getSharedPreferences("shared_pref", MODE_MULTI_PROCESS); // dont do this
+            原因：
+                0、已经被废弃
+                1、在SharedPreferenceImpl里面，没有发现任何对这个Flag的使用；
+                2、flag保证了在API 11以前的系统上，如果sp已经被读取进内存，再次获取这个sp的时候，
+                   如果有这个flag，会重新读一遍文件，仅此而已

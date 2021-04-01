@@ -1,0 +1,7 @@
+
+拦截器：
+    BridgeInterceptor ：过渡拦截器，提供 配置http的报文的功能。
+    CacheInterceptor ： 1、将服务器响应的数据写入缓存 2、提供 重复利用的Request
+    ConnectInterceptor :
+    CallServerInterceptor : 最后一个拦截器，和服务器通信
+    RetryAndFollowUpInterceptor ：重试拦截器

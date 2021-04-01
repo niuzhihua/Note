@@ -1,0 +1,117 @@
+
+    Systrace :
+        Android4.3新增的性能分析工具， 可以跟踪系统的 IO操作、cpu负载、Surface渲染、GC等。
+        systrace 是一个利用了Linux平台的ftrace的工具。
+        如果要用systrace分析app中函数的执行耗时，就需要 对函数中添加自定义label.
+
+
+    原理:
+
+        在系统的一些关键链路（比如System Service，虚拟机，Binder驱动）插入一些信息（我这里称之为Label），
+        通过Label的开始和结束来确定某个核心过程的执行时间，然后把这些Label信息收集起来得到系统关键路径的运行时间信息，
+        进而得到整个系统的运行性能信息。
+
+        Android Framework里面一些重要的模块都插入了Label信息:
+            Java层的通过android.os.Trace类完成
+            native层通过ATrace宏完成
+            用户可以添加自定义的Label
+        这样就组成了一个完成的性能分析系统。
+
+    使用条件：
+        Android 4.3以上 ： 系统版本越高，Android Framework中添加的 Label就越多，能够支持和分析的系统模块也就越多。
+
+    注意事项：
+        因为Systrace没办法自由的控制开始和结束，而trace得到的数据有可能非常多，因此 需要手工缩小需要分析的数据集合。
+        手动缩小范围，会帮助你加速收敛问题的分析过程，进而快速地定位和解决问题。
+
+        TODO(debuggable和非debuggable 的分析差别较大。这里只分析 非debuggable的。)
+        非debuggable模式下开启自定义 Label功能：
+
+        Application的 attachBaseContext {
+            Class<?> trace = Class.forName("android.os.Trace");
+            Method setAppTracingAllowed = trace.getDeclaredMethod("setAppTracingAllowed", boolean.class);
+            setAppTracingAllowed.invoke(null, true);
+        }
+
+
+    安装Python2.7 并配置环境变量:
+    安装python 和 window通信组件：找到对应版本，例如 这里python2.7对应 pywin32-220.win-amd64-py2.7.exe
+        https://sourceforge.net/projects/pywin32/files/pywin32/Build%20220/
+        可以避免错误：
+
+    遇到的问题1: ImportError: No module named win32con
+                安装pywin32-220.win-amd64-py2.7.exe 后已经解决
+    遇到的问题2: No ADB devices connected.
+            重启电脑后不启动android studio ，直接运行命令。
+    问题3:
+            ValueError: invalid literal for int() with base 10:
+
+    ------------------------------------------------------------------------
+    2种方式抓取trace文件：
+
+        1、以上环境配置好后，运行命令  , 失败了，adb不稳定。
+            window 平台:
+                python systrace.py -t 10 sched gfx view wm am app webview -a <package-name>
+
+            systrace.py命令的一般用法:
+
+                systrace.py [options] [category1 [category2 ...]]
+
+                options: trace命令的参数
+                        -a <package_name>：开启指定包名App中自定义Trace Label的Trace功能。
+                                           如果在代码中使用了`Trace.beginSection("tag")`,
+                                           `Trace.endSection`；默认情况下，是不会生效的，因此，这个选项一定要开启！
+
+                        -t N : 指定Trace运行的时间 , 注意尽可能缩小时间
+
+                        -o FILE ：trace文件的输出路径 ，不指定就是当前目录的trace.html
+
+                category:关心的系统模块
+                        view ： View绘制系统的相关信息，比如onMeasure，onLayout等；对分析卡顿比较有帮助
+                        am   ： ActivityManager调用的相关信息；用来分析Activity的启动过程比较有效。
+                        dalvik : 虚拟机相关信息，比如GC停顿等。
+                        binder_driver : Binder驱动的相关信息，如果你怀疑是Binder IPC的问题，不妨打开这个
+                        gfx ：   Graphic系统的相关信息，包括SerfaceFlinger，VSYNC消息，Texture，RenderThread等；
+                                分析卡顿非常依赖这个。
+
+                        sched`: CPU调度的信息，非常重要；你能看到CPU在每个时间段在运行什么线程；
+                                线程调度情况，比如锁信息。
+                        disk : Disk I/O
+                        WebView ：分析卡顿的时候， `webview` 就几乎是无用的。
+                        power ： 分析卡顿的时候， `webview` 就几乎是无用的。
+
+                        详细:
+                            http://gityuan.com/2016/01/17/systrace/
+
+        2 、使用Device Monitor , 双击等一会儿就会打开。 成功生成trace.html
+            \android-sdk\tools\monitor.bat
+
+            1:链接上手机后找到设备，点击 trace按钮、
+            2:设定trace保存目录，选择好trace选项 后：
+            3:手动操作app,
+            4:找到trace.html 分析即可。
+                Google Chrome浏览器可以打开systrace，如果打不开，可以通过chrome://tracing/，然后load systrace。
+
+    自定义Trace分析：
+        TODO(注意：使用Android Device Monitor生成trace.html时，在点击systrace按钮弹出界面后，一定要选中包名，否则不会统计自定义事件)
+
+        在怀疑的方法中加入 Label如下：
+            public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container,
+                        Bundle savedInstanceState) {
+                Trace.beginSection("Fragement_onCreateView");
+                // .. 其他代码
+                Trace.endSection();
+            }
+
+        一般分析过程就是， 怀疑哪里有问题，就在那那个函数加上Label，运行一遍抓一个Trace，
+        看看自己的猜测对不对；如果猜测正确，进一步加Label缩小范围，定位到具体的自定义函数，
+        函数最终调用到系统内部，那就开启系统相关模块的Trace，继续定位；
+        如果猜测错误，那就转移目标，一步步缩小范围，直至问题收敛。
+
+
+    分析冷启动过程：
+        在Application类的 attachBaseContext 中插入Label
+            Trace.beginSection("attachBaseContext")
+        在App首页的`onWindowFocusChanged` 或者你认为别的合适的启动结束点 调用
+            Trace.endSection
+

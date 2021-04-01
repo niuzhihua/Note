@@ -1,0 +1,175 @@
+
+界面的显示流程：
+    创建Activity{
+        1、 创建Window
+        2、 创建DecorView、ViewTree，并挂载到DecorView、
+    }
+    在ActivityThread.handleResumeActivity(...){
+        performResumeActivity(...){
+             r.activity.performResume(..) // 回调onResume
+        }
+        3、注册Window到WMS   .
+            wm.addView(decorView, l){  // wm:WindowManagerImpl
+                最终调到ViewRootImpl.setView(...){
+        3.1、绘制        requestLayout(); {
+                        最终触发 measure，layout,draw
+                        layout(){
+                            // 调用setFrame 设置宽高之后才可以获取。
+                        }
+                    }
+                    mWindowSession.addToDisplay(...)
+                    setFrame(mTmpFrame){
+                        最终调用scheduleTraversals(){
+
+                        }
+                    }
+                }
+            }
+        4、设置ViewTree 可见   .
+            r.activity.makeVisible();
+    }
+
+
+------------------------------------------------------------------------------------------
+	1、由于一个应用窗口对应与一个Activity，所以必须先创建Activity.
+		每 个进程对应一个ActivityThread类 , AMS启动Acivity最终由ActivityThread完成。
+
+		ActivityThread.handleLaunchActivity(...){
+			performLaunchActivity(...){
+				Activity activity = mInstrumentation.newActivity(...)
+				activity.attach(...)
+				mInstrumentation.callActivityOnCreate(...)
+			}
+		}
+
+	2、调用 activity.attach(...)，初始化必须的变量。
+
+		attach的作用是设置Activity调度所必需的内部变量。变量包括：
+
+			Context appContext ：		？
+			ActivityThread ActivityThread ：？
+			IBinder token ：		？
+			Activity parent ：		？
+
+	3、在attach 内部 为该Activity创建 Window对象
+
+		activity.attach(...){
+			最终创建一个PhoneWindow对象
+			mWindow = new PhoneWindow(this, window, activityConfigCallback);
+
+			由于设置了这个回调，所以用户消息能够传递到Activity中 。
+			mWindow.setCallback(this=activity);
+		}
+
+	4、创建完Window对象后，初始化 Window的 mWindowManager 成员。
+
+	   每个 Window内部包含一个WindowManager对象。
+
+		activity.attach(...){
+
+			 mWindow.setWindowManager((WindowManager)context.getSystemService(Context.WINDOW_SERVICE),...)
+			 mWindowManager = mWindow.getWindowManager();
+		}
+
+	   由此可见：Activity 中的 WindowManager对象和 Window 对象中的  WindowManager对象 是一样的。
+
+	5、创建完Activity对象、Window对象后 ，接着就是ViewTree的创建
+
+		mInstrumentation.callActivityOnCreate(...){
+			调用开发者复写的 onCreate方法
+			MyActivity.onCreate(...){
+				 setContentView(...){
+				    AppCompatDelegateImpl.setContentView(..){
+                        ensureSubDecor(){
+
+                            mSubDecor = createSubDecor(){
+                                attachToWindow()
+                                // 创建 DecorView , 并绑定window
+                                mWindow.getDecorView();
+                            }
+                        }
+
+                        加载 开发者 编写的 布局
+                        LayoutInflater.from(mContext).inflate(resId, contentParent){
+                            	mLayoutInflater.inflate(layoutResID, mContentParent){
+                            			最终到ViewGroup的addView方法
+                            			ViewGroup.addView(..){
+                            				// 触发View Tree的绘制
+                            				requestLayout();
+                            			}
+                            	}
+                        }
+				    }
+				 }
+			}
+		}
+
+	7、将创建的这个窗口告诉给WMS, WMS把窗口显示在屏幕上。
+
+		 ActivityThread.handleResumeActivity(..){
+
+			转入 WindowManagerGlobal 的addView
+			 wm.addView(decor, l);
+
+	8、执行 WindowManagerGlobal 的 addView方法。
+
+		此类维护三个数组，用于保存该应用程序中所拥有的窗口的状态。
+
+		ArrayList<View> mViews   ：  每一个View对象都将成为WmS所认为的一个窗口
+		ArrayList<ViewRootImpl> mRoots ： mViews中每个View对象 对应的ViewRootImpl对象
+
+		ArrayList<WindowManager.LayoutParams> mParams ：
+		把 mViews 中的 View 对象当做一个窗口 添加进WMS中时，要求每个被添加的窗口 要对应一个LayoutParams对象。
+		mParam保存了每个窗口对应的参数。
+
+		addView(view,layoutParams,display,parentWindow){
+
+			检测是否添加过，不允许重复添加
+
+			如果添加的窗口为子窗口类型，则找到其父窗口，保存在 View panelParentView 变量中。
+
+			创建一个ViewRootImpl, 我们直到每个窗口(其实是View)都对应一个 ViewRootImpl.
+
+			调用 viewRootImpl.setView(
+
+				view,			// 窗口，即界面，就是开发者编写的界面
+				wparams,		// 窗口的各种参数，大小、位置、风格等
+				panelParentView		// 当该窗口有父窗口时才有意义
+
+				)
+		}
+
+	9、执行ViewRootImpl的 setView方法，通过IWindowSession对象 完成向WMS添加窗口的工作。
+
+		ViewRootImpl.setView( view , params , panelParentView ){
+
+			给重要成员 mView、mWindowAttributes、
+
+				mView = view;
+				mWindowAttributes.copyFrom(params);
+				// 如果添加的是子窗口，那么给mAttachlnfo 的成员 mPanelParentWindowToken 赋值，值为父窗口的 token。
+				if (panelParentView != null) {
+					 mAttachInfo.mPanelParentWindowToken = panelParentView.getApplicationWindowToken();
+				 }
+
+			调用 requestLayout()，发出界面重绘消息到UI线程的消息队列。
+
+			调 用 mWindowSession.add()，通知WMS添加窗口
+
+		}
+
+
+        10、设置ViewTree 可见
+
+                ActivityThread.handleResumeActivity(...){
+                    r.activity.makeVisible() {
+                        // 显示可见
+                         mDecor.setVisibility(View.VISIBLE);
+                    }
+                }
+
+
+		说明：
+			WMS是窗口管理系统，当app新增了一个根View时，肯定要通知WMS，将View树注册到WMS中, 在注册之前，先要执行一次
+			requestLayout , 由于触摸事件也是又WMS派发到View树，所以确保了View树做好了接收事件的准备。
+

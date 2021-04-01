@@ -1,0 +1,127 @@
+﻿dispatchTouchEvent 逻辑：
+    1、如果是DOWN事件，则清除以前的所有状态。
+    2、检测事件拦截情况
+        3、当前ViewGroup不拦截时 查找一个能处理事件的child，并添加进 TouchTarget 链表。
+    4、 当前事件没有Child处理时，当前ViewGourp作为普通View来消费事件。
+    5、更新  TouchTarget 链表
+
+
+---------------------------------------------
+建议：
+	在编写ViewGroup子类时，尽量重写 onInterceptTouchEvent ，不建议重写dispatchTouchEvent。
+	onInterceptTouchEvent是体现ViewGroup差异的地方，而dispatchTouchEvent 是所有ViewGroup的共性。
+
+ViewGroup中事件的派发：对View提供的派发机制进行了重写规划
+	ViewGroup优先考虑拦截的可能性，通常情况下，由onInterceptTouchEvent （即子类）来决定。
+	dispatchTouchEvent(ev){
+	
+			1、 DOWN事件是后续事件的起点，一旦受到DOWN事件，则清除以前的所有状态。
+		        if (actionMasked == MotionEvent.ACTION_DOWN) {
+     
+				cancelAndClearTouchTargets(ev);
+				resetTouchState();
+			}
+		
+			2、 检测事件拦截情况
+			final boolean intercepted;
+
+			if (actionMasked == MotionEvent.ACTION_DOWN  || mFirstTouchTarget != null) {
+
+				// disallowIntercept == false：当前ViewGroup允许拦截，onInterceptTouchEvent 就可以得到执行，这时就是由子类(重写了onInterceptTouchEvent)来觉得是否拦截了。
+				// disallowIntercept == true ：当前ViewGroup不允许拦截， intercepted = false;
+				final boolean disallowIntercept = (mGroupFlags & FLAG_DISALLOW_INTERCEPT) != 0;
+				
+				if (!disallowIntercept) {
+
+				    intercepted = onInterceptTouchEvent(ev);
+				    ev.setAction(action);  
+
+				} else {
+				    intercepted = false;	 
+				}
+			} else {
+				 
+				intercepted = true;		// 当前ViewGroup 要拦截事件
+			}
+
+			3、当前ViewGroup不拦截时 查找一个能处理事件的child，并添加进 TouchTarget 链表。
+
+				TouchTarget 链表 ：  
+				
+			命中if表示 不拦截消息的情况 ，这时子View就有机会来处理消息。
+			if (!canceled && !intercepted){		
+			
+				实现逻辑：
+
+					1、遍历所有child 
+
+					2、把事件发送给每一个child，由child自己来觉得是否处理事件。
+
+					3、如果满足：child.canReceivePointerEvents() 和 isTransformedTouchPointInView，则child将准备接收事件。
+
+					  if ( !child.canReceivePointerEvents() 
+					    || !isTransformedTouchPointInView(x, y, child, null) ) {
+
+						continue;  
+					 }
+
+						canReceivePointerEvents ： 表示child能否接收事件
+						isTransformedTouchPointInView ：计算事件的(x,y) 有没有 落在 child所属范围内。 
+					
+					4、执行 dispatchTransformedTouchEvent 方法 将事件 发给Child 
+						
+							bool dispatchTransformedTouchEvent(...){
+							
+								实现逻辑：
+
+								 1、判断child是否为 View
+								 
+								 2、child为View,则调用 super.dispatchTouchEvent(event) 消费事件。
+									即执行View的 dispatchTouchEvent。
+									view.dispatchTouchEvent -> view.OnTouchListener.onTouch -> view.onTouchEvent
+									 
+								 3、child为ViewGroup, 则 回到ViewGroup的 dispatchTouchEvent . 即递归遍历View树了。
+
+								( 4、直到最终找到View来消费事件,如果没有View消费,则执行Activity的 onTouchEvent了 )
+	
+							}
+					
+					5、发给Child 成功，则退出循环。
+						
+						if (dispatchTransformedTouchEvent(...)){
+						
+							//  addTouchTarget会更新 mFirstTouchTarget： mFirstTouchTarget = target 
+							newTouchTarget = addTouchTarget(child, idBitsToAssign);
+
+							break;
+						}
+					 				
+			}
+
+			4、 当前事件没有Child处理时： mFirstTouchTarget = null ,因此把当前ViewGourp作为普通View来消费事件。
+
+				No touch targets so treat this as an ordinary view.
+				
+			    当前事件有Child处理时：  mFirstTouchTarget != null , 此时将当前事件分发给 TouchTarget 链表中的所有元素(排除已经消费了事件的TouchTarget)。
+
+			    为什么要有链表？
+			    要处理 多点触控的逻辑。
+
+				逻辑 ：
+					if( mFirstTouchTarget = null){
+					
+						当前ViewGourp作为普通View来消费事件
+					}else{
+					
+						事件分发给TouchTarget 链表中的元素
+					}
+
+			5、更新  TouchTarget 链表
+				
+				 if (canceled || ）{  // 若为CANCEL事件，清空链表。
+				 
+					清空链表
+				 }
+	}
+
+	

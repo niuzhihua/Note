@@ -1,0 +1,133 @@
+﻿
+
+默认情况下事件的传递流程：
+	InputManagerService
+        ViewRootImpl :
+            enqueueInputEvent ->
+                doProcessInputEvents ->
+                    deliverInputEvent ->
+                        ViewPostImeInputStage.onProcess ->
+                            processPointerEvent
+	                        DecorView:dispatchPointerEvent
+	                        // 由于多态调用到子类DecorView的dispatchTouchEvent
+	                        View: dispatchPointerEvent -> dispatchTouchEvent
+                            DecorView: dispatchTouchEvent				// 事件传入Activity
+	                        Activity :dispatchTouchEvent
+                            // 使用super 调用直接父类FrameLayout的dispatchTouchEvent,而FrameLayout没有此方法，
+                            // 则调用到ViewGroup的dispatchTouchEvent
+                            DecorView : superDispatchTouchEvent
+                            // 最终调用到ViewGroup的dispatchTouchEvent
+                            ViewGroup: dispatchTouchEvent
+                            Activity: onTouchEvent
+
+------------------------------------
+InputEventReceiver:
+	dispatchInputEvent : Called from native code.
+		onInputEvent 
+			finishInputEvent
+ViewRootImpl:
+	enqueueInputEvent
+		doProcessInputEvents();
+			deliverInputEvent(q){
+				选择stage : 为 ViewPostImeInputStage
+				stage = q.shouldSkipIme() ? mFirstPostImeInputStage : mFirstInputStage;
+				stage.deliver(q);
+			}
+			ViewPostImeInputStage{
+				onProcess(){
+					 processPointerEvent(){
+						mView 就是root : DecorView , 是在调用setView 初始化的。
+						TODO(#0)
+						boolean handled = mView.dispatchPointerEvent(event);
+						return handled ? FINISH_HANDLED : FORWARD;
+
+					 }
+				}
+			}
+
+
+DecorView extends FrameLayout
+		
+		TODO(#2)
+		dispatchTouchEvent(){
+
+			cb 就是Activity 
+			final Window.Callback cb = mWindow.getCallback();
+
+			调用 Activity 的 dispatchTouchEvent 
+			return  cb.dispatchTouchEvent(ev)
+		}
+		TODO(#4)
+		public boolean superDispatchTouchEvent(MotionEvent event) {
+
+			转入ViewGroup 中的dispatchTouchEvent
+			return super.dispatchTouchEvent(event);
+		}
+
+ViewGroup 
+	TODO(#5)
+	dispatchTouchEvent(){
+	}
+
+Activity ： 
+	TODO(#3)
+	dispatchTouchEvent{
+		调用到PhoneWindow的 superDispatchTouchEvent 。
+		if (getWindow().superDispatchTouchEvent(ev)) {
+			 return true;
+		}
+
+		上面的if 最终为： 
+//		PhoneWindow.superDispatchTouchEvent(){
+//			return mDecor.superDispatchTouchEvent(event);
+//		}
+
+		TODO(#6)
+		return onTouchEvent(ev);
+	}
+
+	onTouchEvent{
+		 默认情况
+		 return false;
+	}
+
+MyActivity extents Activity
+		
+	重写 dispatchTouchEvent 事件将不再向后( activity.onTouchEvent()、view树 )传递
+
+	重写 onTouchEvent 事件：如果没有View消费event, 则才由 Activity的onTouchEvent消费。
+
+View:
+	TODO(#1)
+	dispatchPointerEvent
+
+		1、mOnTouchListener 是否消费了事件
+		2、onTouchEvent 是否消费了事件
+
+		dispatchTouchEvent(event){
+
+		     （设置了  mOnTouchListener并且 mOnTouchListener.onTouch  返回true，即消费了事件。 )
+
+		
+		    if (li != null && li.mOnTouchListener != null
+			    && (mViewFlags & ENABLED_MASK) == ENABLED
+			    && li.mOnTouchListener.onTouch(this, event)) {
+			result = true;
+		    }
+
+		    由此可见， 当onTouch 返回true , 就表示消费了事件 ，	 onTouchEvent将不再执行了。
+
+		    if (!result && onTouchEvent(event)) {
+			result = true;
+		    }
+			
+		    return result
+		}
+			
+
+
+
+
+
+
+

@@ -1,0 +1,105 @@
+﻿
+https://github.com/JakeWharton/DiskLruCache
+
+1：DiskLruCache 的初始化：
+
+    public void initDiskCache(String cacheDir) {
+        try {
+            diskLruCache = DiskLruCache.open(new File(cacheDir), //缓存目录
+                    BuildConfig.VERSION_CODE,                           // 版本
+                    1,                      // 表示一个key对应valuecount个文件，一般是1
+                    10 * 1024 * 1024);                            // 缓存大小
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+2： 添加 一个Bitmap到磁盘：
+
+    // 添加到硬盘缓存
+    public void putToDisk(String key, Bitmap bitmap) {
+        DiskLruCache.Snapshot snapshot = null;
+        OutputStream os = null;
+        try {
+            snapshot = diskLruCache.get(key);
+            // 如果缓存有对应key的文件。
+            if (snapshot != null) {
+                // doNothing
+            } else {
+                DiskLruCache.Editor editor = diskLruCache.edit(key);
+                if (editor != null) {
+                    os = editor.newOutputStream(0);
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, os);
+                    // 这样就缓存了一个bitmap到磁盘
+                    editor.commit();
+                }
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (snapshot != null) {
+                snapshot.close();
+            }
+            if (os != null) {
+                try {
+                    os.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+
+3： 从磁盘缓存中获取bitmap
+
+   /**
+     * 从磁盘获取图片
+     * @param key
+     * @param reuseable 可以复用内存的Bitmap
+     * @return
+     */
+    public Bitmap getFromDisk(String key,Bitmap reuseable) {
+
+        DiskLruCache.Snapshot snapshot = null;
+        InputStream is = null;
+        try {
+            snapshot = diskLruCache.get(key);
+            if (snapshot != null) {
+                is = snapshot.getInputStream(0);
+
+                // 设置BitmapF可以内存复用
+                options.inMutable = true;
+                options.inBitmap = reuseable;
+                Bitmap bitmap = BitmapFactory.decodeStream(is, null, options);
+                if (bitmap != null) {
+                    // 加载到内存缓存
+                    put(key, bitmap);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (snapshot != null) {
+                // 这里的close 已经关闭了InputStream
+                snapshot.close();
+            }
+        }
+        return null;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

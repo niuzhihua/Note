@@ -46,6 +46,7 @@ fun main() {
     // 调用伴生对象A的函数
     A.a()
     A.b()
+    A().s
     // 伴生对象A的 属性
     println(A.staticField)
     println(A().s)

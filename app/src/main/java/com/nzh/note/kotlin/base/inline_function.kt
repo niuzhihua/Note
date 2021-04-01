@@ -10,7 +10,7 @@ inline fun sayHello(str: String) {
  * 调用say 这个高阶函数 要
  *      1、创建 block (lambda表达式)。
  *      2、调用 block().
- *  因此高阶函数 更适合定义为内联函数。
+ *  因此高阶函数 更适合义为内联函数。
  */
 inline fun say(block: () -> Unit) {
     var start = System.currentTimeMillis()

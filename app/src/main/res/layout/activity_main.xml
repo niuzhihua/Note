@@ -53,6 +53,7 @@
         android:layout_width="match_parent">
 
         <Button
+            android:id="@+id/btn_BindService"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="bindService"
@@ -79,6 +80,57 @@
 
     </LinearLayout>
 
-
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Event Dispatch"
+        android:onClick="testEventDispatch"
+        />
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Event Dispatch2"
+        android:onClick="testEventDispatch2"
+        />
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Wifi信号强度"
+        android:textAllCaps="false"
+        android:onClick="testWifi"
+        />
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="数据网络信号强度"
+        android:textAllCaps="false"
+        android:onClick="testNet"
+        />
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="create SpActivity View"
+            android:onClick="createView"
+            android:textAllCaps="false"
+            />
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="to SpActivity"
+            android:textAllCaps="false"
+            android:onClick="toSpActivity"
+            />
+        <Button
+            android:onClick="toTestActivity"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="to TestActivity"
+            android:textAllCaps="false"
+            />
+    </LinearLayout>
 
 </LinearLayout>

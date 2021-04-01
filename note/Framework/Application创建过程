@@ -1,0 +1,100 @@
+	Applicatoin的创建过程 及  创建Context：
+
+		1、每一个进程都对应一个Application对象， 有2种Application创建过程：系统进程和用户进程。这里只看用户进程中的创建过程。
+		2、用户进程中创建Applicatoin有两次binder调用。
+
+		system_server进程：
+			public final class SystemServer {
+			    private void run() {
+				...
+				createSystemContext();
+				...
+			    }
+			}
+
+			private void createSystemContext() {
+			    ActivityThread activityThread = ActivityThread.systemMain();
+			    ....
+			}
+			public static ActivityThread systemMain() {
+			    ...
+			    ActivityThread thread = new ActivityThread();
+			    thread.attach(true);
+			    return thread;
+			}
+
+			private void attach(boolean system) {
+			    sCurrentActivityThread = this;
+			    mSystemThread = system;
+			    if (!system) {
+
+				// 初始化RuntimeInit.mApplicationObject值
+
+				RuntimeInit.setApplicationObject(mAppThread.asBinder());
+
+				// 经过binder调用，进入system_server进程
+				final IActivityManager mgr = ActivityManager.getService();{   // 获取AMS Proxy
+
+					final IBinder b = ServiceManager.getService(Context.ACTIVITY_SERVICE);
+					final IActivityManager am = IActivityManager.Stub.asInterface(b);
+				}
+
+				mgr.attachApplication(mAppThread);      // IPC
+			    } else {
+				...
+			    }
+			}
+
+			ActivityManagerService :
+
+				attachApplication(IApplicationThread thread)    // IApplicationThread Proxy
+					attachApplicationLocked(thread,..)
+						thread.bindApplication(............)		// IPC
+
+		app进程：
+			ApplicationThread extends IApplicationThread.Stub{
+
+				bindApplication(...){
+					sendMessage(H.BIND_APPLICATION, data);
+				}
+			}
+
+			ActivityThread.handleBindApplication(..){
+
+
+				// 创建Application 、ContextImpl 并  attachBaseContext
+				app = data.info.makeApplication(data.restrictedBackupMode, null);{ // LoadApk:
+
+					// 一个进程 只有一个Application实例
+					if (mApplication != null) {
+					    return mApplication;
+					}
+
+					创建ContextImpl实例
+					ContextImpl appContext = ContextImpl.createAppContext(mActivityThread, this);
+
+					创建Application
+					Application app = mActivityThread.mInstrumentation.newApplication(...){
+
+						// Instrumentaion:
+						Application newApplication(..){
+
+							 Application app = getFactory(context.getPackageName()).instantiateApplication(cl,className);
+
+							 app.attach(context){
+								 // Application:
+								 final void attach(Context context) {
+
+									 初始化mBase对象
+
+									 attachBaseContext(context);
+								 }
+							 }
+						}
+					}
+					appContext.setOuterContext(app);
+				}
+
+				// 回调Application的 onCreate
+				mInstrumentation.callApplicationOnCreate(app);
+			}

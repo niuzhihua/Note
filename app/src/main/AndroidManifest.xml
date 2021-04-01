@@ -1,18 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.nzh.note">
 
     <application
+        android:name=".MyApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:largeHeap="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <activity android:name=".optimize.recyclerview.TestRecyclerViewActivity"></activity>
+        <activity android:name=".optimize.ViewCache.TestActivity" />
+        <activity android:name=".optimize.SpTestActivity" />
+        <activity android:name=".view.dispatchEvent.Sample2.Demo2Activity" />
+        <activity android:name=".view.dispatchEvent.Sample1.DemoActivity" />
         <activity
             android:name=".launchmode.SingleIntanceActivity"
             android:launchMode="singleInstance" />
-
         <activity
             android:name=".launchmode.SingleTaskActivity"
             android:launchMode="singleTask"
@@ -39,10 +46,17 @@
             android:process=":MyService">
             <intent-filter>
                 <action android:name="com.nzh.note.ipc.MyService" />
+
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
-
     </application>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" /> <!-- 网络信号检测 -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
 </manifest>

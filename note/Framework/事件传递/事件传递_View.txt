@@ -1,0 +1,85 @@
+﻿
+View中事件的派发：
+	dispatchTouchEvent(event){
+	    事件消费(拦截)1、
+			设置了mOnTouchListener 并且 onTouch消费了事件。（返回true）
+		
+	    if (li != null && li.mOnTouchListener != null
+		    && (mViewFlags & ENABLED_MASK) == ENABLED
+		    && li.mOnTouchListener.onTouch(this, event)) {
+		    result = true;
+	    }
+
+	    事件消费(拦截)2、
+			
+			onTouchEvent方法消费了事件。（返回true）
+			由此可见， 当onTouch 返回true , 就表示消费了事件 ，	 onTouchEvent将不再执行了。
+
+	    if (!result && onTouchEvent(event)) {
+		    result = true;
+	    }
+		
+	    return result
+	}
+
+事件的类型：
+	ACTION_DOWN : 是后续事件的起点，通常作为一种标志。
+	ACTION_MOVE : 
+	ACTION_UP   : 事件的结束点
+	ACTION_CANCEL : 不由用户主动产生。
+
+	一旦ACTION_DOWN确定了消费事件的View,那么后续的 ACTION_MOVE、ACTION_UP事件也会被此View消费 ，直到重新 按下ACTION_DOWN。
+	
+事件消费(拦截)2、onTouchEvent : 
+
+	onTouchEvent{
+		switch(action){
+		
+			case ACTION_DOWN:
+				mHasPerformedLongPress = false;  // 重置标记
+				...
+				setPressed(true, x, y);		 // 更新按下状态 ：可以刷新UI
+				checkForLongClick(0,x, y){	 // 检测是否为长按
+				
+					实现逻辑：
+						1、通过ViewConfiguration.getLongPressTimeout() 取得长按事件的条件 Timeout
+						2、post一个 runnable
+						3、如果在Timeout前有ACTION_MOVE 或 ACTION_UP产生，则 remove runnable , 
+						   否则响应长按事件，这时如果设置了 OnLongClickListener,则回调。	
+				}
+				...
+			case ACTION_MOVE:
+
+				 if (!pointInView(x, y, mTouchSlop)) {	// 是否超出了View的范围
+
+					 removeLongPressCallback();     // 移除长按回调处理
+					 ...	
+					 setPressed(true, x, y);	// 更新按下状态 ：可以刷新UI
+					 ...
+				 }
+
+			case ACTION_UP :
+				...
+				setPressed(true, x, y);			// 更新按下状态 ：可以刷新UI
+				...
+				
+									// 判断是否会产生Click事件
+
+				if (!mHasPerformedLongPress && !mIgnoreNextUpEvent) {	 // 已经执行过长按 LongClick，则不会执行 Click
+
+					if (mPerformClick == null) {
+					    mPerformClick = new PerformClick();
+					}
+					if (!post(mPerformClick)) {			// Click 事件在消息队列中执行
+					    performClickInternal();
+					}
+				}
+
+			case ACTION_CANCEL :		// 标记重置，释放资源。
+				...
+				setPressed(false);
+				removeLongPressCallback();
+				mHasPerformedLongPress = false;
+				...
+		}
+	}
