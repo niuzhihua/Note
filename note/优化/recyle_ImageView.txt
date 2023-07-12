@@ -1,0 +1,71 @@
+ImageView图片回收
+
+  fun releaseImageView(v:View){
+      v.let {
+          if(it is ViewGroup){
+              val count = it.childCount
+              if(count>0){
+                  val c  = count-1
+                  for(i in 0..c){
+                      val child = it.getChildAt(i)
+                      if(child is ImageView){
+                          child.releaseImageViewResource()
+                      }else{
+                          releaseImageView(child)
+                      }
+                  }
+              }
+          }else{
+              if(it is ImageView){
+                  it.releaseImageViewResource()
+              }
+          }
+      }
+  }
+  
+  fun ImageView.releaseImageViewResource() {
+  //    if (this != null) {
+          this.background?.let { background->
+              if ( background is BitmapDrawable) {
+                  var bitmapDrawable: BitmapDrawable? = background
+                  var bitmap = bitmapDrawable!!.bitmap
+                  bitmapDrawable = null
+                  if (bitmap != null && !bitmap.isRecycled) {
+                      bitmap.recycle()
+                      bitmap = null
+                  }
+              }
+          }
+          this.drawable?.let { drawable ->
+              if (drawable is BitmapDrawable) {
+                  var bitmapDrawable: BitmapDrawable? = drawable
+                  var bitmap = bitmapDrawable!!.bitmap
+                  bitmapDrawable = null
+                  if (bitmap != null && !bitmap.isRecycled) bitmap.recycle()
+                  bitmap = null
+              }
+          }
+  //    }
+  }
+
+
+
+    
+在Activity中清除ImageView 数据
+
+  override fun onBackPressed() {
+          super.onBackPressed()
+          finish()
+          Glide.get(this).clearMemory()
+          mBinding.ivBg.releaseImageViewResource()
+      }
+
+在Fragment 中清除ImageView数据
+
+      override fun onDestroy() {
+          super.onDestroy()
+          Glide.get(requireActivity()).clearMemory()
+          mBinding.root.let {
+              releaseImageView(it)
+          }
+      }
